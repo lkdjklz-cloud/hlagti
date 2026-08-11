@@ -4,7 +4,6 @@ import prisma from '../db.js'
 import { authRequired, roles, attachBarber } from '../auth/middleware.js'
 import { startEntry, doneEntry, cancelQueue, walkIn } from '../queue/service.js'
 import { startOfTodayLocal } from '../lib/barbers.js'
-
 const router = Router()
 
 router.use(authRequired, roles('BARBER'), attachBarber)
@@ -100,6 +99,37 @@ router.post('/walkin', async (req, res, next) => {
     }
     const entry = await walkIn(req.barber, { customerName: parsed.data.customerName })
     return res.status(201).json({ entry })
+  } catch (e) {
+    return next(e)
+  }
+})
+
+// ── Today's bookings ────────────────────────────────────────
+router.get('/slots', async (req, res, next) => {
+  try {
+    const start = startOfTodayLocal()
+    const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1)
+    const slots = await prisma.slot.findMany({
+      where: { barberId: req.barber.id, startsAt: { gte: start, lt: end } },
+      orderBy: { startsAt: 'asc' }
+    })
+    return res.json({ slots })
+  } catch (e) {
+    return next(e)
+  }
+})
+
+router.post('/slots/:id/cancel', async (req, res, next) => {
+  try {
+    const slot = await prisma.slot.findUnique({ where: { id: req.params.id } })
+    if (!slot || slot.barberId !== req.barber.id) {
+      return res.status(404).json({ error: 'not_found' })
+    }
+    const updated = await prisma.slot.update({
+      where: { id: slot.id },
+      data: { status: 'CANCELLED' }
+    })
+    return res.json({ slot: updated })
   } catch (e) {
     return next(e)
   }
