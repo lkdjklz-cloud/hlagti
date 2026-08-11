@@ -1,0 +1,143 @@
+// hlagti — Prisma schema (SQLite)
+// Canonical plan S1. Designed to migrate to PostgreSQL later (change provider).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CUSTOMER
+  BARBER
+  ADMIN
+}
+
+enum QueueStatus {
+  WAITING
+  IN_SERVICE
+  DONE
+  CANCELLED
+}
+
+enum SlotStatus {
+  AVAILABLE
+  BOOKED
+  ARRIVED
+  DONE
+  CANCELLED
+}
+
+model User {
+  id           String          @id @default(cuid())
+  email        String?         @unique
+  passwordHash String?
+  name         String
+  role         Role            @default(CUSTOMER)
+  phone        String?
+  createdAt    DateTime        @default(now())
+
+  barber     Barber?
+  queueEntry QueueEntry[]
+  slots      Slot[]
+  notifications Notification[]
+  pushSubscriptions PushSubscription[]
+}
+
+model Barber {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  slug              String   @unique
+  shopName          String
+  bio               String?
+  area              String?
+  city              String?
+  open              Boolean  @default(true)
+  opensAt           String? // "HH:MM" default for all days
+  closesAt          String? // "HH:MM"
+  workingHours      String   @default("{}") // JSON per weekday {"mon":{"open":"09:00","close":"22:00"},...}
+  avgMinutes        Int      @default(17)
+  slotsEnabled      Boolean  @default(false)
+  slotLengthMinutes Int      @default(30)
+  createdAt         DateTime @default(now())
+
+  services     Service[]
+  queueEntries QueueEntry[]
+  slots        Slot[]
+}
+
+model Service {
+  id              String @id @default(cuid())
+  barberId        String
+  barber          Barber @relation(fields: [barberId], references: [id], onDelete: Cascade)
+  name            String
+  price           Int
+  durationMinutes Int
+  sortOrder       Int    @default(0)
+}
+
+model QueueEntry {
+  id           String      @id @default(cuid())
+  barberId     String
+  barber       Barber      @relation(fields: [barberId], references: [id], onDelete: Cascade)
+  number       Int
+  customerName String
+  userId       String?
+  user         User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  status       QueueStatus @default(WAITING)
+  joinedAt     DateTime    @default(now())
+  startedAt    DateTime?
+  doneAt       DateTime?
+  canceledAt   DateTime?
+
+  @@index([barberId, status])
+  @@index([barberId, number])
+}
+
+model Slot {
+  id           String     @id @default(cuid())
+  barberId     String
+  barber       Barber     @relation(fields: [barberId], references: [id], onDelete: Cascade)
+  startsAt     DateTime
+  endsAt       DateTime
+  customerName String?
+  userId       String?
+  user         User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  status       SlotStatus @default(BOOKED)
+  createdAt    DateTime   @default(now())
+
+  @@index([barberId, startsAt])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  email     String?
+  type      String
+  title     String
+  body      String
+  data      String   @default("{}") // JSON payload
+  sentPush  Boolean  @default(false)
+  sentEmail Boolean  @default(false)
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+}
