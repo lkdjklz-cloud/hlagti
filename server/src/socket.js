@@ -37,13 +37,16 @@ export function getIo() {
 }
 
 export function emitQueueUpdate(barberId, data) {
+  if (!io) return
   getIo().to(`barber:${barberId}`).emit('queue:update', data)
 }
 
 export function emitTicketUpdate(entryId, data) {
+  if (!io) return
   getIo().to(`ticket:${entryId}`).emit('ticket:update', data)
 }
 
 export function emitTicketRemoved(entryId) {
+  if (!io) return
   getIo().to(`ticket:${entryId}`).emit('ticket:removed')
 }

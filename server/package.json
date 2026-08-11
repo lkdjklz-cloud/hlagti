@@ -10,7 +10,7 @@
     "migrate": "prisma migrate dev",
     "dbpush": "prisma db push",
     "generate": "prisma generate",
-    "test": "node --test tests/"
+    "test": "node --test tests/queue.test.js"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",

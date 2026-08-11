@@ -5,6 +5,9 @@ import { config } from './config.js'
 import { initSocket } from './socket.js'
 import prisma from './db.js'
 import authRoutes from './auth/routes.js'
+import barbersRoutes from './barbers/routes.js'
+import queueRoutes from './queue/routes.js'
+import dashboardRoutes from './dashboard/routes.js'
 
 const app = express()
 
@@ -16,6 +19,9 @@ app.get('/api/health', (_req, res) => {
 })
 
 app.use('/api/auth', authRoutes)
+app.use('/api', barbersRoutes)
+app.use('/api', queueRoutes)
+app.use('/api/dashboard', dashboardRoutes)
 
 // Public config fragment (VAPID public key for push)
 app.get('/api/config/public', (_req, res) => {
