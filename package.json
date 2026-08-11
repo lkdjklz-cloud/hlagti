@@ -7,8 +7,7 @@
     "dev": "concurrently -n server,web -c blue,green \"npm run dev --prefix server\" \"npm run dev --prefix web\"",
     "seed": "npm run seed --prefix server",
     "build": "npm run build --prefix web",
-    "start:server": "npm run start --prefix server",
-    "postinstall": "npm run install --prefix server && npm run install --prefix web"
+    "start:server": "npm run start --prefix server"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

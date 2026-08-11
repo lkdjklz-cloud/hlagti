@@ -55,12 +55,20 @@ export function windowFor(barber, date) {
 }
 
 // All candidate slot start-times for a date (step = slot length).
+// For today, times already passed are excluded.
 export function candidateTimes(barber, date) {
   const win = windowFor(barber, date)
   if (!win) return []
   const step = barber.slotLengthMinutes || 30
+  const now = new Date()
+  const isToday =
+    now.getFullYear() === date.getFullYear() &&
+    now.getMonth() === date.getMonth() &&
+    now.getDate() === date.getDate()
+  const nowMinutes = now.getHours() * 60 + now.getMinutes()
   const times = []
   for (let t = win.open; t + step <= win.close; t += step) {
+    if (isToday && t < nowMinutes) continue
     times.push(t)
   }
   return times
@@ -117,6 +125,17 @@ export async function bookSlot(barber, { dateStr, time, customerName, userId = n
   }
   if (startMin % step !== 0) {
     const err = new Error('slot_off_grid')
+    err.status = 409
+    throw err
+  }
+
+  const now = new Date()
+  const isToday =
+    now.getFullYear() === start.getFullYear() &&
+    now.getMonth() === start.getMonth() &&
+    now.getDate() === start.getDate()
+  if (isToday && start.getTime() <= now.getTime()) {
+    const err = new Error('slot_in_past')
     err.status = 409
     throw err
   }
