@@ -119,6 +119,7 @@ model Notification {
   user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   email     String?
   type      String
+  key       String? // dedupe key, e.g. `milestone_one:<entryId>`
   title     String
   body      String
   data      String   @default("{}") // JSON payload
@@ -128,6 +129,7 @@ model Notification {
   createdAt DateTime @default(now())
 
   @@index([userId])
+  @@index([key])
   @@index([createdAt])
 }
 
@@ -135,9 +137,13 @@ model PushSubscription {
   id        String   @id @default(cuid())
   userId    String?
   user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  entryId   String?
   endpoint  String   @unique
   p256dh    String
   auth      String
   userAgent String?
   createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([entryId])
 }

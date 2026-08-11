@@ -2,6 +2,7 @@ import prisma from '../db.js'
 import { signGuestTicket } from '../auth/tokens.js'
 import { emitQueueUpdate, emitTicketUpdate, emitTicketRemoved } from '../socket.js'
 import { startOfTodayLocal } from '../lib/barbers.js'
+import { createNotification, hasNotifiedToday, lastPosition } from '../notify/notify.js'
 import {
   activeEntries,
   waitingCount,
@@ -125,13 +126,56 @@ export async function broadcast(barber, _changedEntryIds = []) {
 
   for (const e of entries) {
     if (e.status !== 'WAITING') continue
-    const { position, etaMinutes, waiting } = await ticketSnapshot(e, barber)
+    const t = await ticketSnapshot(e, barber)
     emitTicketUpdate(e.id, {
       id: e.id,
       number: e.number,
-      position,
-      etaMinutes,
-      waiting
+      position: t.position,
+      etaMinutes: t.etaMinutes,
+      waiting: t.waiting
+    })
+    await notifyEntry(e, t, barber)
+  }
+}
+
+// Push/email evaluation for a single waiting entry.
+async function notifyEntry(e, t, barber) {
+  const position = t.position
+  const key = (kind) => `${kind}:${e.id}`
+
+  // Position-change push (only relevant above the milestone ranks).
+  if (position >= 2) {
+    const prev = await lastPosition(key('position'))
+    if (prev === null || prev !== position) {
+      const aheadLabel =
+        position === 2 ? 'شخصان فقط قبلك' : `${position} أشخاص قبلك`
+      await createNotification({
+        key: key('position'),
+        type: 'position',
+        title: 'تذكرة الانتظار',
+        body: `تحرّك دورك — ${aheadLabel}.`,
+        data: { entryId: e.id, position, url: `/barber/${barber.slug}` }
+      })
+    }
+  }
+
+  if (position === 1 && !(await hasNotifiedToday(key('milestone_one')))) {
+    await createNotification({
+      key: key('milestone_one'),
+      type: 'milestone_one',
+      title: 'دورك قريب جدًا',
+      body: 'شخص واحد فقط قبلك — كن جاهزًا، دورك التالي!',
+      data: { entryId: e.id, position: 1, url: `/barber/${barber.slug}` }
+    })
+  }
+
+  if (position === 0 && !(await hasNotifiedToday(key('milestone_zero')))) {
+    await createNotification({
+      key: key('milestone_zero'),
+      type: 'milestone_zero',
+      title: 'أتى دورك!',
+      body: 'لا أحد قبلك الآن — كن جاهزًا.',
+      data: { entryId: e.id, position: 0, url: `/barber/${barber.slug}` }
     })
   }
 }

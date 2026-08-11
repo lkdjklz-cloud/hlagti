@@ -1,7 +1,7 @@
 import { IconCheck, IconBell } from './Icons.jsx'
 import { fmtDuration } from '../lib/format.js'
 
-export function ConfirmTicket({ ticket, barber, busy, onCancel }) {
+export function ConfirmTicket({ ticket, barber, busy, onCancel, push = null }) {
   const position = ticket.position ?? 0
   const waitLabel =
     position === 0
@@ -53,7 +53,34 @@ export function ConfirmTicket({ ticket, barber, busy, onCancel }) {
 
         <p className="ticket-note" style={{ marginTop: '12px' }}>
           <IconBell width="17" height="17" />
-          نرسل لك <b>إشعارًا عندما يبقى شخص واحد فقط قبلك</b> — فعّل إشعارات التطبيق.
+          <span>
+            نرسل لك <b>إشعارًا عندما يبقى شخص واحد فقط قبلك</b> —{' '}
+            {push ? (
+              push.enabled ? (
+                <b style={{ color: 'var(--success)' }}>الإشعارات مفعّلة على هذا الجهاز ✓</b>
+              ) : (
+                <button
+                  type="button"
+                  disabled={push.busy}
+                  onClick={push.onEnable}
+                  style={{
+                    border: 0,
+                    background: 'var(--navy)',
+                    color: '#fff',
+                    borderRadius: 10,
+                    padding: '7px 14px',
+                    fontWeight: 700,
+                    fontFamily: 'inherit',
+                    fontSize: 13
+                  }}
+                >
+                  {push.busy ? 'جارٍ التفعيل…' : 'فعّل الإشعارات'}
+                </button>
+              )
+            ) : (
+              <b>فعّل إشعارات التطبيق من إعدادات المتصفح.</b>
+            )}
+          </span>
         </p>
 
         <div className="confirm-actions">

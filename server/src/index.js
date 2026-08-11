@@ -8,6 +8,7 @@ import authRoutes from './auth/routes.js'
 import barbersRoutes from './barbers/routes.js'
 import queueRoutes from './queue/routes.js'
 import slotsRoutes from './slots/routes.js'
+import notifyRoutes from './notify/routes.js'
 import dashboardRoutes from './dashboard/routes.js'
 
 const app = express()
@@ -23,6 +24,7 @@ app.use('/api/auth', authRoutes)
 app.use('/api', barbersRoutes)
 app.use('/api', queueRoutes)
 app.use('/api', slotsRoutes)
+app.use('/api', notifyRoutes)
 app.use('/api/dashboard', dashboardRoutes)
 
 // Public config fragment (VAPID public key for push)

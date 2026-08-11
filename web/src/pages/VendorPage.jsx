@@ -10,6 +10,7 @@ import {
   joinTicketRoom
 } from '../lib/socket.js'
 import { saveTicket, loadTicket, clearTicket } from '../lib/ticket.js'
+import { subscribePush, isSubscribed } from '../lib/push.js'
 import { fmtClock } from '../lib/format.js'
 import AppHeader from '../components/AppHeader.jsx'
 import BarberBanner from '../components/BarberBanner.jsx'
@@ -32,6 +33,8 @@ export default function VendorPage() {
   const [board, setBoard] = useState({ waiting: null, etaMinutes: null })
   const [ticket, setTicket] = useState(null) // active ticket (joined)
   const [busy, setBusy] = useState(false)
+  const [pushEnabled, setPushEnabled] = useState(false)
+  const [pushBusy, setPushBusy] = useState(false)
   const lastAnnounced = useRef(null)
 
   // Load barber + board + restore persisted ticket.
@@ -142,6 +145,36 @@ export default function VendorPage() {
     }
   }, [ticket, slug, toast])
 
+  const push = ticket
+    ? {
+        enabled: pushEnabled,
+        busy: pushBusy,
+        onEnable: async () => {
+          setPushBusy(true)
+          const token = loadTicket(slug)
+          const res = await subscribePush({ ticketToken: token })
+          setPushBusy(false)
+          if (res.ok) {
+            setPushEnabled(true)
+            toast('تم تفعيل الإشعارات')
+          } else if (res.denied) {
+            toast('تم رفض الإذن من المتصفح')
+          } else if (res.supported === false) {
+            toast('متصفحك لا يدعم الإشعارات')
+          } else {
+            toast('تعذّر التفعيل — جرّب على HTTPS')
+          }
+        }
+      }
+    : null
+
+  // Reflect an already-active subscription when a ticket is shown.
+  useEffect(() => {
+    if (ticket) {
+      isSubscribed().then(setPushEnabled)
+    }
+  }, [ticket])
+
   async function share() {
     const url = window.location.href
     const title = `${barber?.shopName || 'صالون'} — تذكرة الانتظار`
@@ -201,7 +234,13 @@ export default function VendorPage() {
 
           <section className="ticket-zone" aria-label="تذكرة الانتظار والحجز">
             {ticket ? (
-              <ConfirmTicket ticket={ticket} barber={barber} busy={busy} onCancel={cancel} />
+              <ConfirmTicket
+                ticket={ticket}
+                barber={barber}
+                busy={busy}
+                onCancel={cancel}
+                push={push}
+              />
             ) : (
               <TicketState barber={barber} board={board} busy={busy} onJoin={join} />
             )}
