@@ -4,6 +4,7 @@ import cors from 'cors'
 import { config } from './config.js'
 import { initSocket } from './socket.js'
 import prisma from './db.js'
+import authRoutes from './auth/routes.js'
 
 const app = express()
 
@@ -14,9 +15,20 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'hlagti-server' })
 })
 
+app.use('/api/auth', authRoutes)
+
 // Public config fragment (VAPID public key for push)
 app.get('/api/config/public', (_req, res) => {
   res.json({ vapidPublicKey: config.vapid.publicKey })
+})
+
+// Central error handler (async errors land here via next(e))
+app.use((err, _req, res, next) => {
+  if (res.headersSent) return next(err)
+  const status = err.status || 500
+  const message = status === 500 ? 'internal_error' : err.message
+  if (status === 500) console.error('[error]', err)
+  return res.status(status).json({ error: message })
 })
 
 const httpServer = http.createServer(app)
