@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api, clearToken, getToken } from '../lib/api.js'
 import { useToast } from '../lib/toast.jsx'
@@ -62,7 +62,7 @@ const off = onQueueUpdate(() => {
       await api(`/dashboard/queue/${id}/${action}`, { method: 'POST' })
       await refresh()
     } catch {
-      toast('ØªØ¹Ø°Ù‘Ø±Øª Ø§Ù„Ø¹Ù…Ù„ÙŠØ©')
+      toast('تعذّرت العملية')
     } finally {
       setBusyId(null)
     }
@@ -76,9 +76,9 @@ const off = onQueueUpdate(() => {
       await api('/dashboard/walkin', { method: 'POST', body: { customerName: walkName } })
       setWalkName('')
       await refresh()
-      toast('ØªÙ…Øª Ø¥Ø¶Ø§ÙØ© Ø§Ù„Ø²Ø¨ÙˆÙ†')
+      toast('تمت إضافة الزبون')
     } catch {
-      toast('ØªØ¹Ø°Ù‘Ø±Øª Ø§Ù„Ø¥Ø¶Ø§ÙØ©')
+      toast('تعذّرت الإضافة')
     } finally {
       setBusyId(null)
     }
@@ -92,7 +92,7 @@ const off = onQueueUpdate(() => {
       })
       await refresh()
     } catch {
-      toast('ØªØ¹Ø°Ù‘Ø± Ø§Ù„Ø­ÙØ¸')
+      toast('تعذّر الحفظ')
     }
   }
 
@@ -101,7 +101,7 @@ const off = onQueueUpdate(() => {
       await api(`/dashboard/slots/${id}/cancel`, { method: 'POST' })
       await refresh()
     } catch {
-      toast('ØªØ¹Ø°Ù‘Ø± Ø§Ù„Ø¥Ù„ØºØ§Ø¡')
+      toast('تعذّر الإلغاء')
     }
   }
 
@@ -122,14 +122,14 @@ const off = onQueueUpdate(() => {
           <div className="appbar-inner" style={{ maxWidth: 1024, marginInline: 'auto', width: '100%' }}>
             <span className="brand">
               <IconScissors width="20" height="20" color="var(--red)" />
-              Ù„ÙˆØ­Ø© Ø§Ù„ØªØ­ÙƒÙ…
+              لوحة التحكم
             </span>
             <div className="row" style={{ gap: 6 }}>
-              <Link to="/dashboard/settings" className="icon-btn" title="Ø§Ù„Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª" aria-label="Ø§Ù„Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª">
+              <Link to="/dashboard/settings" className="icon-btn" title="الإعدادات" aria-label="الإعدادات">
                 <IconSettings />
               </Link>
               <button className="btn btn-secondary" style={{ width: 'auto', padding: '8px 14px', fontSize: 13 }} onClick={logout}>
-                Ø®Ø±ÙˆØ¬
+                خروج
               </button>
             </div>
           </div>
@@ -137,7 +137,7 @@ const off = onQueueUpdate(() => {
 
         {!data || !auth ? (
           <div className="app" style={{ paddingTop: 40, textAlign: 'center', color: 'var(--muted)' }}>
-            Ø¬Ø§Ø±Ù Ø§Ù„ØªØ­Ù…ÙŠÙ„â€¦
+            جارٍ التحميل…
           </div>
         ) : (
           <main style={{ padding: '20px 16px' }}>
@@ -151,14 +151,14 @@ const off = onQueueUpdate(() => {
                 </p>
               </div>
               <button className={`btn ${data.barber.open ? 'btn-secondary' : 'btn-cta'}`} style={{ width: 'auto', padding: '10px 18px', fontSize: 14 }} onClick={toggleOpen}>
-                {data.barber.open ? 'Ù…ÙØªÙˆØ­ â€” Ø£ØºÙ„Ù‚ØŸ' : 'Ù…ØºÙ„Ù‚ â€” Ø§ÙØªØ­ØŸ'}
+                {data.barber.open ? 'مفتوح — أغلق؟' : 'مغلق — افتح؟'}
               </button>
             </div>
 
             <div className="row" style={{ marginBottom: 18, gap: 10 }}>
-              <span className="chip red">Ø§Ù„Ù…Ù†ØªØ¸Ø±ÙˆÙ†: {data.statWaiting}</span>
-              <span className="chip gold">Ù‚ÙŠØ¯ Ø§Ù„Ø®Ø¯Ù…Ø©: {data.statInService}</span>
-              <span className="chip green">Ù…ÙƒØªÙ…Ù„ Ø§Ù„ÙŠÙˆÙ…: {data.doneToday.length}</span>
+              <span className="chip red">المنتظرون: {data.statWaiting}</span>
+              <span className="chip gold">قيد الخدمة: {data.statInService}</span>
+              <span className="chip green">مكتمل اليوم: {data.doneToday.length}</span>
             </div>
 
             <div className="stack">
@@ -166,28 +166,28 @@ const off = onQueueUpdate(() => {
               <section className="card">
                 <div className="row spread" style={{ marginBottom: 12 }}>
                   <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, color: 'var(--navy)', fontSize: 18, margin: 0 }}>
-                    Ø§Ù„Ø·Ø§Ø¨ÙˆØ± Ø§Ù„Ù…Ø¨Ø§Ø´Ø±
+                    الطابور المباشر
                   </h2>
-                  <span className="live"><span className="dot" aria-hidden="true" />Ù…Ø¨Ø§Ø´Ø±</span>
+                  <span className="live"><span className="dot" aria-hidden="true" />مباشر</span>
                 </div>
 
                 {serving.length > 0 && (
                   <div className="card" style={{ marginBottom: 12, background: 'color-mix(in srgb, var(--gold) 8%, var(--surface))', borderColor: 'color-mix(in srgb, var(--gold) 40%, var(--border))' }}>
                     <div className="row spread">
                       <div className="row">
-                        <span className="chip gold">Ù‚ÙŠØ¯ Ø§Ù„Ø®Ø¯Ù…Ø©</span>
+                        <span className="chip gold">قيد الخدمة</span>
                         <strong>{serving[0].customerName}</strong>
-                        <span style={{ color: 'var(--muted)', fontSize: 13 }}>Ø±Ù‚Ù… {serving[0].number}</span>
+                        <span style={{ color: 'var(--muted)', fontSize: 13 }}>رقم {serving[0].number}</span>
                       </div>
                       <button className="btn btn-cta" style={{ width: 'auto', padding: '10px 18px', fontSize: 14 }} disabled={busyId === serving[0].id} onClick={() => act('done', serving[0].id)}>
-                        Ø¥Ù†Ù‡Ø§Ø¡
+                        إنهاء
                       </button>
                     </div>
                   </div>
                 )}
 
                 {waiting.length === 0 ? (
-                  <p className="empty-state">Ù„Ø§ ÙŠÙˆØ¬Ø¯ Ù…Ù†ØªØ¸Ø±ÙˆÙ† Ø§Ù„Ø¢Ù†.</p>
+                  <p className="empty-state">لا يوجد منتظرون الآن.</p>
                 ) : (
                   <div className="stack">
                     {waiting.map((e, i) => (
@@ -195,16 +195,16 @@ const off = onQueueUpdate(() => {
                         <span className="tcell-num num" style={{ fontSize: 30 }}>{String(e.number).padStart(2, '0')}</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <strong style={{ fontSize: 15 }}>{e.customerName}</strong>
-                          <div style={{ color: 'var(--muted)', fontSize: 12.5 }}>Ø§Ù†Ø¶Ù… Ù‚Ø¨Ù„ {fmtRelative(e.joinedAt)}</div>
+                          <div style={{ color: 'var(--muted)', fontSize: 12.5 }}>انضم قبل {fmtRelative(e.joinedAt)}</div>
                         </div>
                         {i === 0 ? (
                           <button className="btn btn-cta" style={{ width: 'auto', padding: '10px 16px', fontSize: 13 }} disabled={busyId === e.id} onClick={() => act('start', e.id)}>
-                            Ø§Ù„Ø¨Ø¯Ø¡
+                            البدء
                           </button>
                         ) : (
-                          <span className="chip">{i} Ù‚Ø¨Ù„Ù‡</span>
+                          <span className="chip">{i} قبله</span>
                         )}
-                        <button className="icon-btn" title="Ø¥Ù„ØºØ§Ø¡" aria-label="Ø¥Ù„ØºØ§Ø¡" disabled={busyId === e.id} onClick={() => act('cancel', e.id)}>
+                        <button className="icon-btn" title="إلغاء" aria-label="إلغاء" disabled={busyId === e.id} onClick={() => act('cancel', e.id)}>
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
                         </button>
                       </div>
@@ -213,9 +213,9 @@ const off = onQueueUpdate(() => {
                 )}
 
                 <form onSubmit={walkIn} className="row" style={{ marginTop: 14 }}>
-                  <input className="input" style={{ flex: 1 }} placeholder="Ø²Ø¨ÙˆÙ† Ø­Ø¶Ø± ÙˆØ§Ù‚ÙÙ‹Ø§ â€” Ø£Ø¯Ø®Ù„ Ø§Ø³Ù…Ù‡" value={walkName} onChange={(e) => setWalkName(e.target.value)} maxLength={60} />
+                  <input className="input" style={{ flex: 1 }} placeholder="زبون حضر واقفًا — أدخل اسمه" value={walkName} onChange={(e) => setWalkName(e.target.value)} maxLength={60} />
                   <button className="btn btn-secondary" style={{ width: 'auto', padding: '12px 18px' }} disabled={busyId === 'walkin'}>
-                    <IconPlus width="16" height="16" /> Ø¥Ø¶Ø§ÙØ©
+                    <IconPlus width="16" height="16" /> إضافة
                   </button>
                 </form>
               </section>
@@ -224,14 +224,14 @@ const off = onQueueUpdate(() => {
               <section className="card">
                 <div className="row spread" style={{ marginBottom: 12 }}>
                   <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, color: 'var(--navy)', fontSize: 18, margin: 0 }}>
-                    Ù…ÙˆØ§Ø¹ÙŠØ¯ Ø§Ù„ÙŠÙˆÙ…
+                    مواعيد اليوم
                   </h2>
                   <Link to="/dashboard/settings" className="link-btn" style={{ fontSize: 13 }}>
-                    ØªØ¹Ø¯ÙŠÙ„ Ø³Ø§Ø¹Ø§Øª Ø§Ù„Ø¹Ù…Ù„
+                    تعديل ساعات العمل
                   </Link>
                 </div>
                 {data.slots.length === 0 ? (
-                  <p className="empty-state">Ù„Ø§ ØªÙˆØ¬Ø¯ Ø­Ø¬ÙˆØ²Ø§Øª Ø§Ù„ÙŠÙˆÙ….</p>
+                  <p className="empty-state">لا توجد حجوزات اليوم.</p>
                 ) : (
                   <div className="stack">
                     {data.slots
@@ -239,9 +239,9 @@ const off = onQueueUpdate(() => {
                       .map((s) => (
                         <div key={s.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px' }}>
                           <span className="chip" style={{ fontSize: 15 }}>{fmtClock(s.startsAt)}</span>
-                          <strong style={{ flex: 1 }}>{s.customerName || 'Ø²Ø¨ÙˆÙ†'}</strong>
+                          <strong style={{ flex: 1 }}>{s.customerName || 'زبون'}</strong>
                           <button className="btn btn-secondary" style={{ width: 'auto', padding: '8px 14px', fontSize: 13 }} onClick={() => cancelSlot(s.id)}>
-                            Ø¥Ù„ØºØ§Ø¡
+                            إلغاء
                           </button>
                         </div>
                       ))}
@@ -253,11 +253,11 @@ const off = onQueueUpdate(() => {
               {data.doneToday.length > 0 && (
                 <section className="card">
                   <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, color: 'var(--navy)', fontSize: 18, margin: '0 0 10px' }}>
-                    Ø£ÙÙ†Ø¬ÙØ² Ø§Ù„ÙŠÙˆÙ…
+                    أُنجِز اليوم
                   </h2>
                   <div className="row">
                     {data.doneToday.map((e) => (
-                      <span key={e.id} className="chip green">{e.customerName} Â· {fmtClock(e.doneAt)}</span>
+                      <span key={e.id} className="chip green">{e.customerName} · {fmtClock(e.doneAt)}</span>
                     ))}
                   </div>
                 </section>

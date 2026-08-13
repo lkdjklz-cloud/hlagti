@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api, getToken } from '../lib/api.js'
 import { useToast } from '../lib/toast.jsx'
@@ -37,7 +37,7 @@ export default function ServicesAdmin() {
       setDraft({ ...empty })
       await load()
     } catch {
-      toast('ØªØ¹Ø°Ù‘Ø±Øª Ø§Ù„Ø¥Ø¶Ø§ÙØ©')
+      toast('تعذّرت الإضافة')
     } finally {
       setBusy(false)
     }
@@ -48,7 +48,7 @@ export default function ServicesAdmin() {
       await api(`/dashboard/services/${id}`, { method: 'DELETE' })
       await load()
     } catch {
-      toast('ØªØ¹Ø°Ù‘Ø± Ø§Ù„Ø­Ø°Ù')
+      toast('تعذّر الحذف')
     }
   }
 
@@ -60,49 +60,49 @@ export default function ServicesAdmin() {
           <div className="appbar-inner" style={{ maxWidth: 1024, marginInline: 'auto', width: '100%' }}>
             <Link to="/dashboard" className="brand brand-link">
               <IconScissors width="20" height="20" color="var(--red)" />
-              Ø§Ù„Ø®Ø¯Ù…Ø§Øª ÙˆØ§Ù„Ø£Ø³Ø¹Ø§Ø±
+              الخدمات والأسعار
             </Link>
-            <Link to="/dashboard" className="link-btn">â† Ø¹ÙˆØ¯Ø©</Link>
+            <Link to="/dashboard" className="link-btn">← عودة</Link>
           </div>
         </header>
 
         <main style={{ padding: '20px 16px', maxWidth: 640, marginInline: 'auto' }}>
           <form onSubmit={add} className="card" style={{ marginBottom: 16 }}>
             <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, color: 'var(--navy)', fontSize: 18, margin: '0 0 14px' }}>
-              <IconPlus width="18" height="18" style={{ display: 'inline-block', verticalAlign: '-3px' }} /> Ø®Ø¯Ù…Ø© Ø¬Ø¯ÙŠØ¯Ø©
+              <IconPlus width="18" height="18" style={{ display: 'inline-block', verticalAlign: '-3px' }} /> خدمة جديدة
             </h2>
             <div className="row" style={{ alignItems: 'flex-end' }}>
               <div className="field" style={{ flex: 2, minWidth: 140, marginBottom: 0 }}>
-                <label className="label">Ø§Ø³Ù… Ø§Ù„Ø®Ø¯Ù…Ø©</label>
-                <input className="input" value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} placeholder="Ù…Ø«Ø§Ù„: Ù‚ØµÙ‘Ø©" />
+                <label className="label">اسم الخدمة</label>
+                <input className="input" value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} placeholder="مثال: قصّة" />
               </div>
               <div className="field" style={{ flex: 1, minWidth: 100, marginBottom: 0 }}>
-                <label className="label">Ø§Ù„Ø³Ø¹Ø± (Ø¯Ø¬)</label>
+                <label className="label">السعر (دج)</label>
                 <input className="input" type="number" min={0} value={draft.price} onChange={(e) => setDraft((d) => ({ ...d, price: e.target.value }))} />
               </div>
               <div className="field" style={{ flex: 1, minWidth: 100, marginBottom: 0 }}>
-                <label className="label">Ø§Ù„Ù…Ø¯Ø© (Ø¯Ù‚)</label>
+                <label className="label">المدة (دق)</label>
                 <input className="input" type="number" min={5} max={240} value={draft.durationMinutes} onChange={(e) => setDraft((d) => ({ ...d, durationMinutes: e.target.value }))} />
               </div>
               <button className="btn btn-cta" style={{ width: 'auto', padding: '12px 18px' }} disabled={busy}>
-                {busy ? <span className="spinner" aria-hidden="true" /> : 'Ø¥Ø¶Ø§ÙØ©'}
+                {busy ? <span className="spinner" aria-hidden="true" /> : 'إضافة'}
               </button>
             </div>
           </form>
 
           <div className="card">
             <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, color: 'var(--navy)', fontSize: 18, margin: '0 0 8px' }}>
-              Ø§Ù„Ø®Ø¯Ù…Ø§Øª Ø§Ù„Ø­Ø§Ù„ÙŠØ©
+              الخدمات الحالية
             </h2>
-            {services.length === 0 && <p className="empty-state">Ø£Ø¶Ù Ø£ÙˆÙ„ Ø®Ø¯Ù…Ø© Ù„Ùƒ.</p>}
+            {services.length === 0 && <p className="empty-state">أضف أول خدمة لك.</p>}
             <div className="menu">
               {services.map((s) => (
                 <div className="menu-row" key={s.id}>
                   <span className="menu-name">{s.name}</span>
                   <span className="dots" aria-hidden="true" />
-                  <span className="menu-price">{fmtPrice(s.price)} Ø¯Ø¬</span>
-                  <span className="chip" style={{ fontSize: 12 }}>{s.durationMinutes} Ø¯</span>
-                  <button className="icon-btn" title="Ø­Ø°Ù" aria-label="Ø­Ø°Ù" onClick={() => remove(s.id)}>
+                  <span className="menu-price">{fmtPrice(s.price)} دج</span>
+                  <span className="chip" style={{ fontSize: 12 }}>{s.durationMinutes} د</span>
+                  <button className="icon-btn" title="حذف" aria-label="حذف" onClick={() => remove(s.id)}>
                     <IconTrash />
                   </button>
                 </div>
