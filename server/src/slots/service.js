@@ -100,7 +100,10 @@ export async function slotAvailability(barber, dateStr) {
 }
 
 // Book a slot inside a transaction; conflicts → throws {status:409}.
-export async function bookSlot(barber, { dateStr, time, customerName, userId = null }) {
+export async function bookSlot(
+  barber,
+  { dateStr, time, customerName, customerPhone = null, userId = null }
+) {
   const date = localDate(dateStr)
   if (Number.isNaN(date.getTime())) {
     const err = new Error('invalid_date')
@@ -155,6 +158,7 @@ export async function bookSlot(barber, { dateStr, time, customerName, userId = n
         startsAt: start,
         endsAt: end,
         customerName: (customerName || '').trim() || 'زبون',
+        customerPhone: customerPhone || null,
         userId,
         status: 'BOOKED'
       }

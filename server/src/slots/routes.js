@@ -2,6 +2,8 @@ import { z } from 'zod'
 import { Router } from 'express'
 import { resolveBarberBySlug } from '../lib/barbers.js'
 import { slotAvailability, bookSlot } from './service.js'
+import { notifyBarber } from '../notify/notify.js'
+import { minutesToTime } from './service.js'
 
 const router = Router()
 
@@ -22,7 +24,8 @@ router.get('/barbers/:slug/slots', async (req, res, next) => {
 const bookSchema = z.object({
   date: z.string(),
   time: z.string(),
-  customerName: z.string().max(60).optional()
+  customerName: z.string().max(60).optional(),
+  phone: z.string().max(20).optional().nullable()
 })
 
 router.post('/barbers/:slug/slots', async (req, res, next) => {
@@ -37,7 +40,19 @@ router.post('/barbers/:slug/slots', async (req, res, next) => {
       dateStr: parsed.data.date,
       time: parsed.data.time,
       customerName: parsed.data.customerName,
+      customerPhone: parsed.data.phone,
       userId: req.auth ? req.auth.uid : null
+    })
+    const [y, m, d] = parsed.data.date.split('-').map(Number)
+    const local = new Date(y, m - 1, d)
+    const dayLabel = ['أح', 'إث', 'ثلا', 'أرب', 'خم', 'جم', 'سب'][local.getDay() ?? 0]
+    await notifyBarber(barber, {
+      type: 'slot_booked',
+      title: 'حجز موعد جديد',
+      body: `${slot.customerName} حجز ${dayLabel} ${d}/${m} الساعة ${minutesToTime(
+        new Date(slot.startsAt).getHours() * 60 + new Date(slot.startsAt).getMinutes()
+      )}.`,
+      data: { slotId: slot.id, url: '/dashboard' }
     })
     return res.status(201).json({ slot })
   } catch (e) {

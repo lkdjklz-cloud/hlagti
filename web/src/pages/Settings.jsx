@@ -32,14 +32,16 @@ export default function Settings() {
         } catch {
           wh = {}
         }
-        setForm({
+setForm({
           shopName: me.barber.shopName,
           area: me.barber.area || '',
           city: me.barber.city || '',
           bio: me.barber.bio || '',
           avgMinutes: me.barber.avgMinutes,
           slotsEnabled: me.barber.slotsEnabled,
-          slotLengthMinutes: me.barber.slotLengthMinutes
+          slotLengthMinutes: me.barber.slotLengthMinutes,
+          loyaltyEvery: me.barber.loyaltyEvery || 0,
+          loyaltyEnabled: !!me.barber.loyaltyEvery
         })
         setHours(wh)
       })
@@ -76,12 +78,13 @@ export default function Settings() {
       if (d && !d.open && !d.close) cleanHours[k] = null
     }
     try {
-      await api('/dashboard/settings', {
+await api('/dashboard/settings', {
         method: 'PATCH',
         body: {
           ...form,
           avgMinutes: Number(form.avgMinutes) || 17,
           slotLengthMinutes: Number(form.slotLengthMinutes) || 30,
+          loyaltyEvery: form.loyaltyEnabled ? Number(form.loyaltyEvery) || 9 : null,
           workingHours: cleanHours
         }
       })
@@ -153,11 +156,40 @@ export default function Settings() {
               </div>
             </div>
 
-            <label className="chip" style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: 10, cursor: 'pointer' }}>
+<label className="chip" style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: 10, cursor: 'pointer' }}>
               <input type="checkbox" checked={form.slotsEnabled} onChange={(e) => set('slotsEnabled', e.target.checked)} />
               تفعيل الحجز بموعد (وقت محدد)
             </label>
 
+            <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, color: 'var(--navy)', fontSize: 19, margin: '20px 0 12px' }}>
+              برنامج الولاء
+            </h2>
+            <p style={{ color: 'var(--muted)', fontSize: 13, margin: '0 0 12px' }}>
+              تمنح زبائنك حلاقة مجانية بعد عدد معيّن من الحلاقات المدفوعة.
+            </p>
+            <div className="row" style={{ gap: 10 }}>
+              <label className="chip" style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: 10, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={form.loyaltyEnabled}
+                  onChange={(e) => set('loyaltyEnabled', e.target.checked)}
+                />
+                تفعيل برنامج الولاء
+              </label>
+              {form.loyaltyEnabled && (
+                <div className="field inline-field">
+                  <label className="label">حلاقة مجانية بعد</label>
+                  <input
+                    className="input"
+                    type="number"
+                    min={2}
+                    max={50}
+                    value={form.loyaltyEvery}
+                    onChange={(e) => set('loyaltyEvery', e.target.value)}
+                  />
+                </div>
+              )}
+            </div>
             <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, color: 'var(--navy)', fontSize: 19, margin: '20px 0 12px' }}>
               ساعات العمل
             </h2>

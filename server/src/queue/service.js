@@ -2,7 +2,12 @@ import prisma from '../db.js'
 import { signGuestTicket } from '../auth/tokens.js'
 import { emitQueueUpdate, emitTicketUpdate, emitTicketRemoved } from '../socket.js'
 import { startOfTodayLocal } from '../lib/barbers.js'
-import { createNotification, hasNotifiedToday, lastPosition } from '../notify/notify.js'
+import {
+  createNotification,
+  hasNotifiedToday,
+  lastPosition,
+  notifyBarber
+} from '../notify/notify.js'
 import {
   activeEntries,
   waitingCount,
@@ -11,7 +16,10 @@ import {
   ticketSnapshot
 } from './board.js'
 
-export async function joinQueue(barber, { customerName = 'زبون', userId = null } = {}) {
+export async function joinQueue(
+  barber,
+  { customerName = 'زبون', phone = null, userId = null } = {}
+) {
   const startOfDay = startOfTodayLocal()
   const last = await prisma.queueEntry.findFirst({
     where: { barberId: barber.id, joinedAt: { gte: startOfDay } },
@@ -24,6 +32,7 @@ export async function joinQueue(barber, { customerName = 'زبون', userId = nu
       barberId: barber.id,
       number,
       customerName: (customerName || '').trim() || 'زبون',
+      customerPhone: phone || null,
       userId,
       status: 'WAITING',
       joinedAt: new Date()
@@ -31,6 +40,12 @@ export async function joinQueue(barber, { customerName = 'زبون', userId = nu
   })
 
   await broadcast(barber, [entry.id])
+  await notifyBarber(barber, {
+    type: 'queue_joined',
+    title: 'زبون جديد في الطابور',
+    body: `${entry.customerName} (رقم ${entry.number}) انضم للانتظار.`,
+    data: { entryId: entry.id, url: '/dashboard' }
+  })
   return entry
 }
 
@@ -75,6 +90,15 @@ export async function cancelQueue(entryId, actor, barber = null) {
   const b = barber || (await prisma.barber.findUnique({ where: { id: entry.barberId } }))
   emitTicketRemoved(entry.id)
   await broadcast(b, [])
+  // Let the barber know when a customer backs out.
+  if (!isBarber) {
+    await notifyBarber(b, {
+      type: 'queue_cancelled',
+      title: 'أُلغي انتظار زبون',
+      body: `${entry.customerName} (رقم ${entry.number}) ألغى انتظاره.`,
+      data: { entryId: entry.id, url: '/dashboard' }
+    })
+  }
   return updated
 }
 
@@ -95,7 +119,7 @@ export async function startEntry(entryId) {
   return updated
 }
 
-export async function doneEntry(entryId) {
+export async function doneEntry(entryId, { paid = true } = {}) {
   const entry = await ensureActive(entryId)
   if (entry.status !== 'IN_SERVICE') {
     const err = new Error('cannot_done')
@@ -104,7 +128,7 @@ export async function doneEntry(entryId) {
   }
   const updated = await prisma.queueEntry.update({
     where: { id: entry.id },
-    data: { status: 'DONE', doneAt: new Date() }
+    data: { status: 'DONE', paid, doneAt: new Date() }
   })
   const barber = await prisma.barber.findUnique({ where: { id: entry.barberId } })
   emitTicketRemoved(entry.id)
@@ -112,8 +136,8 @@ export async function doneEntry(entryId) {
   return updated
 }
 
-export async function walkIn(barber, { customerName = 'زبون' } = {}) {
-  return joinQueue(barber, { customerName })
+export async function walkIn(barber, { customerName = 'زبون', phone = null } = {}) {
+  return joinQueue(barber, { customerName, phone })
 }
 
 // Recompute the board + every waiting ticket and push to sockets.

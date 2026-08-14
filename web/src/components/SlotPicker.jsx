@@ -22,6 +22,7 @@ export default function SlotPicker({ barber, onBooked }) {
   const [closed, setClosed] = useState(false)
   const [selected, setSelected] = useState(null)
   const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -64,12 +65,13 @@ export default function SlotPicker({ barber, onBooked }) {
     try {
       const res = await api(`/barbers/${barber.slug}/slots`, {
         method: 'POST',
-        body: { date: key, time: selected, customerName: name }
+        body: { date: key, time: selected, customerName: name, phone }
       })
       toast(`تم حجز موعدك الساعة ${fmtClock(res.slot.startsAt)}`)
       if (onBooked) onBooked(res.slot)
       setSelected(null)
       setName('')
+      setPhone('')
     } catch (e) {
       toast(e.message === 'slot_taken' ? 'هذا الموعد محجوز للأسف — اختر وقتًا آخر' : 'تعذّر الحجز')
     } finally {
@@ -137,6 +139,16 @@ export default function SlotPicker({ barber, onBooked }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             aria-label="اسمك (اختياري)"
+          />
+          <input
+            className="input"
+            style={{ marginBottom: '10px' }}
+            placeholder="رقم هاتفك (اختياري — للمكافآت)"
+            dir="ltr"
+            maxLength={20}
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            aria-label="رقم هاتفك (اختياري)"
           />
           <button className="btn btn-cta" type="button" disabled={busy} onClick={book}>
             {busy ? <span className="spinner" aria-hidden="true" /> : <span>تأكيد الحجز — {selected}</span>}

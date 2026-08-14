@@ -36,3 +36,9 @@ export function onTicketRemoved(cb) {
   s.on('ticket:removed', cb)
   return () => s.off('ticket:removed', cb)
 }
+
+export function onNotifyNew(cb) {
+  const s = getSocket()
+  s.on('notify:new', cb)
+  return () => s.off('notify:new', cb)
+}

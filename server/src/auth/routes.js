@@ -55,7 +55,26 @@ router.post('/register/barber', async (req, res, next) => {
         shopName: d.shopName,
         area: d.area,
         city: d.city,
-        bio: d.bio
+        bio: d.bio,
+        opensAt: '09:00',
+        closesAt: '22:00',
+        workingHours: JSON.stringify(
+          Object.fromEntries(
+            ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].map((day) => [
+              day,
+              { open: '09:00', close: '22:00' }
+            ])
+          )
+        ),
+        slotsEnabled: true,
+        slotLengthMinutes: 30,
+        services: {
+          create: [
+            { name: 'قصّة', price: 300, durationMinutes: 20, sortOrder: 0 },
+            { name: 'حلاقة + لحية', price: 500, durationMinutes: 30, sortOrder: 1 },
+            { name: 'لحية فقط', price: 200, durationMinutes: 15, sortOrder: 2 }
+          ]
+        }
       }
     })
     return res.status(201).json({

@@ -63,6 +63,7 @@ model Barber {
   avgMinutes        Int      @default(17)
   slotsEnabled      Boolean  @default(false)
   slotLengthMinutes Int      @default(30)
+  loyaltyEvery      Int? // e.g. 9 → free haircut every 9 PAID visits (null = disabled)
   createdAt         DateTime @default(now())
 
   services     Service[]
@@ -86,9 +87,11 @@ model QueueEntry {
   barber       Barber      @relation(fields: [barberId], references: [id], onDelete: Cascade)
   number       Int
   customerName String
+  customerPhone String?
   userId       String?
   user         User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
   status       QueueStatus @default(WAITING)
+  paid         Boolean     @default(true) // false → loyalty free visit
   joinedAt     DateTime    @default(now())
   startedAt    DateTime?
   doneAt       DateTime?
@@ -105,9 +108,11 @@ model Slot {
   startsAt     DateTime
   endsAt       DateTime
   customerName String?
+  customerPhone String?
   userId       String?
   user         User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
   status       SlotStatus @default(BOOKED)
+  paid         Boolean    @default(true) // false → loyalty free visit
   createdAt    DateTime   @default(now())
 
   @@index([barberId, startsAt])

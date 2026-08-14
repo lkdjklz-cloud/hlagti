@@ -50,3 +50,8 @@ export function emitTicketRemoved(entryId) {
   if (!io) return
   getIo().to(`ticket:${entryId}`).emit('ticket:removed')
 }
+
+export function emitNotify(barberId, notification) {
+  if (!io) return
+  getIo().to(`barber:${barberId}`).emit('notify:new', notification)
+}

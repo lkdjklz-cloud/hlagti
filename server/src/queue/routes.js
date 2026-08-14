@@ -33,7 +33,8 @@ router.get('/barbers/:slug/queue', async (req, res, next) => {
 })
 
 const joinSchema = z.object({
-  customerName: z.string().min(1).max(60).optional()
+  customerName: z.string().min(1).max(60).optional(),
+  phone: z.string().max(20).optional().nullable()
 })
 
 router.post('/barbers/:slug/queue/join', async (req, res, next) => {
@@ -45,7 +46,11 @@ router.post('/barbers/:slug/queue/join', async (req, res, next) => {
       return res.status(400).json({ error: 'validation', issues: parsed.error.flatten() })
     }
     const userId = req.auth ? req.auth.uid : null
-    const entry = await joinQueue(barber, { customerName: parsed.data.customerName, userId })
+    const entry = await joinQueue(barber, {
+      customerName: parsed.data.customerName,
+      phone: parsed.data.phone,
+      userId
+    })
     return res.status(201).json({
       entry: {
         id: entry.id,

@@ -3,6 +3,7 @@ import { IconClock } from './Icons.jsx'
 
 export default function TicketState({ barber, board, busy, onJoin }) {
   const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
   const eta = board && barber ? board.etaMinutes : 0
 
   return (
@@ -53,7 +54,17 @@ export default function TicketState({ barber, board, busy, onJoin }) {
           onChange={(e) => setName(e.target.value)}
           aria-label="اسمك (اختياري)"
         />
-        <button className="btn btn-cta" type="button" disabled={busy} onClick={() => onJoin(name)}>
+        <input
+          className="input"
+          style={{ marginBottom: '10px' }}
+          placeholder="رقم هاتفك (اختياري — للمكافآت)"
+          dir="ltr"
+          maxLength={20}
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          aria-label="رقم هاتفك (اختياري)"
+        />
+        <button className="btn btn-cta" type="button" disabled={busy} onClick={() => onJoin(name, phone)}>
           {busy ? (
             <span className="spinner" aria-hidden="true" />
           ) : (

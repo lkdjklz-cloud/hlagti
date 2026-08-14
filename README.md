@@ -65,14 +65,19 @@ Then open:
 - `GET|POST /api/barbers/:slug/slots` (availability + booking, conflict-safe)
 - `POST /api/auth/register/barber|customer` · `POST /api/auth/login` · `GET /api/auth/me`
 - `GET /api/dashboard/queue` · `POST /api/dashboard/queue/:id/start|done|cancel` · `POST /api/dashboard/walkin`
-- `PATCH /api/dashboard/settings` · `GET|POST /api/dashboard/services` · `GET /api/dashboard/slots`
+- `GET /api/dashboard/appointments` (upcoming bookings) · `POST /api/dashboard/slots/:id/arrive|done|cancel`
+- `GET /api/dashboard/notifications` · `POST /api/dashboard/notifications/read`
+- `GET /api/dashboard/loyalty` (per-customer paid/free visits)
+- `PATCH /api/dashboard/settings` (incl. `loyaltyEvery`) · `GET|POST /api/dashboard/services` · `GET /api/dashboard/slots`
 - `POST /api/push/subscribe|unsubscribe`
 
 ## Notes
 - Guest ticket = JWT in `localStorage` (`hlagti:ticket:<barberId>`).
 - Numbers restart at 1 each day (server-local time).
 - Notifications are an outbox row per event; `key` dedupes daily milestones, and position pushes fire per change.
+- New barbers get default working hours (09:00–22:00) and 3 starter services on signup.
+- Loyalty: free haircut after N **paid** visits (set `loyaltyEvery` in settings). A visit marked "free" doesn't count toward the next reward.
 - Web Push needs HTTPS or `localhost`. Email skips (logged) until SMTP is configured.
 
 ## Roadmap (next)
-- Ratings & reviews, loyalty (9th visit free), discovery page, photos, PostgreSQL.
+- Ratings & reviews, discovery page, photos, PostgreSQL.

@@ -105,12 +105,12 @@ export default function VendorPage() {
   }, [barber, ticket, toast])
 
   const join = useCallback(
-    async (name) => {
+    async (name, phone) => {
       setBusy(true)
       try {
         const res = await api(`/barbers/${slug}/queue/join`, {
           method: 'POST',
-          body: { customerName: name }
+          body: { customerName: name, phone }
         })
         saveTicket(slug, res.token)
         joinTicketRoom(res.token)

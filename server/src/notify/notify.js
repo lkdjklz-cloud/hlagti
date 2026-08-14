@@ -73,3 +73,25 @@ export async function lastPosition(key) {
   if (!found) return null
   return parseData(found.data).position
 }
+
+// Notify a barber (stored in their outbox + push + live socket badge).
+export async function notifyBarber(barber, { type, title, body, data = {} }) {
+  if (!barber?.userId) return null
+  const n = await createNotification({
+    userId: barber.userId,
+    type,
+    title,
+    body,
+    data: { ...data, barberId: barber.id, url: data.url || '/dashboard' }
+  })
+  const { emitNotify } = await import('../socket.js')
+  emitNotify(barber.id, {
+    id: n.id,
+    type: n.type,
+    title: n.title,
+    body: n.body,
+    createdAt: n.createdAt,
+    readAt: n.readAt
+  })
+  return n
+}
