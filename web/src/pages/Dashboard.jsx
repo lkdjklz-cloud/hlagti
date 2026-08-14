@@ -31,6 +31,7 @@ export default function Dashboard() {
   const [unread, setUnread] = useState(0)
   const [bellOpen, setBellOpen] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
+  const [bootError, setBootError] = useState(null)
   const booted = useRef(false)
 
   const refresh = useCallback(async () => {
@@ -63,17 +64,26 @@ export default function Dashboard() {
       navigate('/login', { replace: true })
       return
     }
+    setBootError(null)
     let alive = true
     Promise.all([api('/auth/me'), api('/dashboard/queue')])
       .then(([me, board]) => {
-        if (!alive || !me.barber) return navigate('/login', { replace: true })
+        if (!alive) return
+        if (!me.barber) {
+          setBootError('هذا الحساب غير مرتبط بصالون. سجّل الخروج ثم أنشئ حساب حلّاق جديد من صفحة الدخول.')
+          return
+        }
         setAuth(me)
         setData((d) => ({ ...(d || {}), ...board, slots: [], appointments: [] }))
         joinBarberRoom(me.barber.id)
         refresh()
         loadNotifs()
       })
-      .catch(() => alive && navigate('/login', { replace: true }))
+      .catch((err) => {
+        if (!alive) return
+        const code = err && err.message ? err.message : String(err || 'unknown')
+        setBootError(`تعذّر فتح لوحة التحكم — ${code}. تحقق من اتصالك، أو سجّل الخروج وأعد المحاولة.`)
+      })
     return () => {
       alive = false
     }
@@ -294,7 +304,19 @@ export default function Dashboard() {
           </div>
         </header>
 
-        {!data || !auth ? (
+        {bootError ? (
+          <div className="app" style={{ paddingTop: 40 }}>
+            <div className="card" style={{ maxWidth: 420, marginInline: 'auto', textAlign: 'center' }}>
+              <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, color: 'var(--navy)', fontSize: 18, margin: '0 0 8px' }}>
+                تعذّر فتح لوحة التحكم
+              </h2>
+              <p style={{ color: 'var(--muted)', fontSize: 14, margin: '0 0 16px' }}>{bootError}</p>
+              <button className="btn btn-cta" style={{ width: 'auto', padding: '10px 20px' }} onClick={logout}>
+                تسجيل الخروج
+              </button>
+            </div>
+          </div>
+        ) : !data || !auth ? (
           <div className="app" style={{ paddingTop: 40, textAlign: 'center', color: 'var(--muted)' }}>
             جارٍ التحميل…
           </div>
