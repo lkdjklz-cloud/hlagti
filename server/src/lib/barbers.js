@@ -1,10 +1,15 @@
 import prisma from '../db.js'
 
 export async function resolveBarberBySlug(slug) {
-  return prisma.barber.findUnique({
-    where: { slug },
-    include: { services: { orderBy: { sortOrder: 'asc' } } }
-  })
+  try {
+    return await prisma.barber.findUnique({
+      where: { slug },
+      include: { services: { orderBy: { sortOrder: 'asc' } } }
+    })
+  } catch (e) {
+    console.log('[db:error] resolveBarberBySlug', slug, e)
+    throw e
+  }
 }
 
 // Start of the server-local day (used for daily ticket numbering).

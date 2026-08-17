@@ -28,6 +28,7 @@ router.get('/barbers/:slug/queue', async (req, res, next) => {
     const entries = await activeEntries(barber.id)
     return res.json(boardSnapshot(entries, barber))
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
@@ -60,6 +61,7 @@ router.post('/barbers/:slug/queue/join', async (req, res, next) => {
       token: guestTicketFor(entry)
     })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
@@ -104,6 +106,7 @@ router.get('/queue/my', async (req, res, next) => {
       }
     })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
@@ -115,6 +118,7 @@ router.delete('/queue/:id', async (req, res, next) => {
     await cancelQueue(req.params.id, { ticket: guest, user: req.auth || null })
     return res.json({ ok: true })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })

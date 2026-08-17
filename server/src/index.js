@@ -37,7 +37,7 @@ app.use((err, _req, res, next) => {
   if (res.headersSent) return next(err)
   const status = err.status || 500
   const message = status === 500 ? 'internal_error' : err.message
-  if (status === 500) console.error('[error]', err)
+  console.log(`[http:error] ${_req.method} ${_req.originalUrl} -> ${status}:`, err)
   return res.status(status).json({ error: message })
 })
 

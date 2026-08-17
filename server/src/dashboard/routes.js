@@ -84,6 +84,7 @@ router.get('/queue', async (req, res, next) => {
       statInService: queue.filter((e) => e.status === 'IN_SERVICE').length
     })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
@@ -97,6 +98,7 @@ router.post('/queue/:id/start', async (req, res, next) => {
     const updated = await startEntry(entry.id)
     return res.json({ entry: updated })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
@@ -116,6 +118,7 @@ router.post('/queue/:id/done', async (req, res, next) => {
     })
     return res.json({ entry: updated })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
@@ -129,6 +132,7 @@ router.post('/queue/:id/cancel', async (req, res, next) => {
     const updated = await cancelQueue(entry.id, { ticket: null, user: null }, req.barber)
     return res.json({ entry: updated })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
@@ -150,6 +154,7 @@ router.post('/walkin', async (req, res, next) => {
     })
     return res.status(201).json({ entry })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
@@ -169,6 +174,7 @@ router.get('/appointments', async (req, res, next) => {
     })
     return res.json({ appointments: slots })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
@@ -184,6 +190,7 @@ router.get('/slots', async (req, res, next) => {
     })
     return res.json({ slots })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
@@ -200,6 +207,7 @@ router.post('/slots/:id/cancel', async (req, res, next) => {
     })
     return res.json({ slot: updated })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
@@ -218,6 +226,7 @@ router.post('/slots/:id/arrive', async (req, res, next) => {
     const updated = await prisma.slot.update({ where: { id: slot.id }, data: { status: 'ARRIVED' } })
     return res.json({ slot: updated })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
@@ -244,6 +253,7 @@ router.post('/slots/:id/done', async (req, res, next) => {
     })
     return res.json({ slot: updated })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
@@ -277,6 +287,7 @@ router.patch('/settings', async (req, res, next) => {
     })
     return res.json({ barber })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
@@ -290,6 +301,7 @@ router.get('/services', async (req, res, next) => {
     })
     return res.json({ services })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
@@ -320,6 +332,7 @@ router.post('/services', async (req, res, next) => {
     })
     return res.status(201).json({ service })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
@@ -347,6 +360,7 @@ router.patch('/services/:id', async (req, res, next) => {
     })
     return res.json({ service })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
@@ -360,6 +374,7 @@ router.delete('/services/:id', async (req, res, next) => {
     await prisma.service.delete({ where: { id: existing.id } })
     return res.json({ ok: true })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
@@ -375,6 +390,7 @@ router.get('/notifications', async (req, res, next) => {
     const unread = notifications.filter((n) => !n.readAt).length
     return res.json({ notifications, unread })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
@@ -387,6 +403,7 @@ router.post('/notifications/read', async (req, res, next) => {
     })
     return res.json({ ok: true })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
@@ -444,6 +461,7 @@ router.get('/loyalty', async (req, res, next) => {
 
     return res.json({ enabled: !!every, every, customers })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })

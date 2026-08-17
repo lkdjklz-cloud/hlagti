@@ -83,6 +83,7 @@ router.post('/register/barber', async (req, res, next) => {
       barber: { id: barber.id, slug: barber.slug, shopName: barber.shopName }
     })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
@@ -118,6 +119,7 @@ router.post('/register/customer', async (req, res, next) => {
       user: { id: user.id, email: user.email, name: user.name, role: user.role }
     })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
@@ -149,6 +151,7 @@ router.post('/login', async (req, res, next) => {
       barber: barber ? { id: barber.id, slug: barber.slug, shopName: barber.shopName } : null
     })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
@@ -165,6 +168,7 @@ router.get('/me', authRequired, async (req, res, next) => {
       barber: barber || null
     })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })

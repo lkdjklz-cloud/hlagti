@@ -53,6 +53,7 @@ router.post('/push/subscribe', async (req, res, next) => {
     }
     return res.json({ ok: true })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
@@ -66,6 +67,7 @@ router.post('/push/unsubscribe', async (req, res, next) => {
     await prisma.pushSubscription.delete({ where: { endpoint: parsed.data.endpoint } }).catch(() => {})
     return res.json({ ok: true })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })

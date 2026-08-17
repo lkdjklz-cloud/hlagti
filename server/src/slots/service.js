@@ -81,10 +81,16 @@ export async function slotAvailability(barber, dateStr) {
   const dayStart = date
   const dayEnd = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1)
 
-  const booked = await prisma.slot.findMany({
-    where: { barberId: barber.id, startsAt: { gte: dayStart, lt: dayEnd } },
-    select: { startsAt: true, status: true }
-  })
+  let booked
+  try {
+    booked = await prisma.slot.findMany({
+      where: { barberId: barber.id, startsAt: { gte: dayStart, lt: dayEnd } },
+      select: { startsAt: true, status: true }
+    })
+  } catch (e) {
+    console.log('[db:error] slotAvailability', barber.slug, dateStr, e)
+    throw e
+  }
   const takenTimes = new Set(
     booked.filter((b) => b.status !== 'CANCELLED').map((b) => b.startsAt.getTime())
   )
@@ -143,27 +149,34 @@ export async function bookSlot(
     throw err
   }
 
-  return prisma.$transaction(async (tx) => {
-    const clash = await tx.slot.findFirst({
-      where: { barberId: barber.id, startsAt: start, status: { not: 'CANCELLED' } }
-    })
-    if (clash) {
-      const err = new Error('slot_taken')
-      err.status = 409
-      throw err
-    }
-    return tx.slot.create({
-      data: {
-        barberId: barber.id,
-        startsAt: start,
-        endsAt: end,
-        customerName: (customerName || '').trim() || 'زبون',
-        customerPhone: customerPhone || null,
-        userId,
-        status: 'BOOKED'
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const clash = await tx.slot.findFirst({
+        where: { barberId: barber.id, startsAt: start, status: { not: 'CANCELLED' } }
+      })
+      if (clash) {
+        const err = new Error('slot_taken')
+        err.status = 409
+        throw err
       }
+      return tx.slot.create({
+        data: {
+          barberId: barber.id,
+          startsAt: start,
+          endsAt: end,
+          customerName: (customerName || '').trim() || 'زبون',
+          customerPhone: customerPhone || null,
+          userId,
+          status: 'BOOKED'
+        }
+      })
     })
-  })
+  } catch (e) {
+    if (!e.status || e.status >= 500) {
+      console.log('[db:error] bookSlot', barber.slug, dateStr, time, e)
+    }
+    throw e
+  }
 }
 
 export function slotDateTimeKey(dateStr, time) {

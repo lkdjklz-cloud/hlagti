@@ -17,6 +17,7 @@ router.get('/barbers/:slug/slots', async (req, res, next) => {
     }
     return res.json(await slotAvailability(barber, dateStr))
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
@@ -56,6 +57,7 @@ router.post('/barbers/:slug/slots', async (req, res, next) => {
     })
     return res.status(201).json({ slot })
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })

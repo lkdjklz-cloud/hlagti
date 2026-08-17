@@ -33,6 +33,7 @@ export async function attachBarber(req, _res, next) {
     req.barber = barber
     return next()
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 }

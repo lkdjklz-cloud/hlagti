@@ -21,23 +21,35 @@ export async function joinQueue(
   { customerName = 'زبون', phone = null, userId = null } = {}
 ) {
   const startOfDay = startOfTodayLocal()
-  const last = await prisma.queueEntry.findFirst({
-    where: { barberId: barber.id, joinedAt: { gte: startOfDay } },
-    orderBy: { number: 'desc' }
-  })
+  let last = null
+  try {
+    last = await prisma.queueEntry.findFirst({
+      where: { barberId: barber.id, joinedAt: { gte: startOfDay } },
+      orderBy: { number: 'desc' }
+    })
+  } catch (e) {
+    console.log('[db:error] queueEntry.findFirst joinQueue', barber.slug, e)
+    throw e
+  }
   const number = (last?.number || 0) + 1
 
-  const entry = await prisma.queueEntry.create({
-    data: {
-      barberId: barber.id,
-      number,
-      customerName: (customerName || '').trim() || 'زبون',
-      customerPhone: phone || null,
-      userId,
-      status: 'WAITING',
-      joinedAt: new Date()
-    }
-  })
+  let entry
+  try {
+    entry = await prisma.queueEntry.create({
+      data: {
+        barberId: barber.id,
+        number,
+        customerName: (customerName || '').trim() || 'زبون',
+        customerPhone: phone || null,
+        userId,
+        status: 'WAITING',
+        joinedAt: new Date()
+      }
+    })
+  } catch (e) {
+    console.log('[db:error] queueEntry.create joinQueue', barber.slug, e)
+    throw e
+  }
 
   await broadcast(barber, [entry.id])
   await notifyBarber(barber, {
@@ -50,7 +62,13 @@ export async function joinQueue(
 }
 
 async function ensureActive(entryId) {
-  const entry = await prisma.queueEntry.findUnique({ where: { id: entryId } })
+  let entry
+  try {
+    entry = await prisma.queueEntry.findUnique({ where: { id: entryId } })
+  } catch (e) {
+    console.log('[db:error] queueEntry.findUnique ensureActive', entryId, e)
+    throw e
+  }
   if (!entry) {
     const err = new Error('not_found')
     err.status = 404
@@ -82,10 +100,16 @@ export async function cancelQueue(entryId, actor, barber = null) {
     throw err
   }
 
-  const updated = await prisma.queueEntry.update({
-    where: { id: entry.id },
-    data: { status: 'CANCELLED', canceledAt: new Date() }
-  })
+  let updated
+  try {
+    updated = await prisma.queueEntry.update({
+      where: { id: entry.id },
+      data: { status: 'CANCELLED', canceledAt: new Date() }
+    })
+  } catch (e) {
+    console.log('[db:error] queueEntry.update cancelQueue', entry.id, e)
+    throw e
+  }
 
   const b = barber || (await prisma.barber.findUnique({ where: { id: entry.barberId } }))
   emitTicketRemoved(entry.id)
@@ -110,10 +134,16 @@ export async function startEntry(entryId) {
     err.status = 409
     throw err
   }
-  const updated = await prisma.queueEntry.update({
-    where: { id: entry.id },
-    data: { status: 'IN_SERVICE', startedAt: new Date() }
-  })
+  let updated
+  try {
+    updated = await prisma.queueEntry.update({
+      where: { id: entry.id },
+      data: { status: 'IN_SERVICE', startedAt: new Date() }
+    })
+  } catch (e) {
+    console.log('[db:error] queueEntry.update startEntry', entry.id, e)
+    throw e
+  }
   const barber = await prisma.barber.findUnique({ where: { id: entry.barberId } })
   await broadcast(barber, [entry.id])
   return updated
@@ -126,10 +156,16 @@ export async function doneEntry(entryId, { paid = true } = {}) {
     err.status = 409
     throw err
   }
-  const updated = await prisma.queueEntry.update({
-    where: { id: entry.id },
-    data: { status: 'DONE', paid, doneAt: new Date() }
-  })
+  let updated
+  try {
+    updated = await prisma.queueEntry.update({
+      where: { id: entry.id },
+      data: { status: 'DONE', paid, doneAt: new Date() }
+    })
+  } catch (e) {
+    console.log('[db:error] queueEntry.update doneEntry', entry.id, e)
+    throw e
+  }
   const barber = await prisma.barber.findUnique({ where: { id: entry.barberId } })
   emitTicketRemoved(entry.id)
   await broadcast(barber, [])
@@ -144,21 +180,32 @@ export async function walkIn(barber, { customerName = 'زبون', phone = null }
 // Emitting to all waiting entries keeps every viewer's position correct no
 // matter which mutation happened (join behind, someone cancels, advance, …).
 export async function broadcast(barber, _changedEntryIds = []) {
-  const entries = await activeEntries(barber.id)
+  let entries
+  try {
+    entries = await activeEntries(barber.id)
+  } catch (e) {
+    console.log('[db:error] activeEntries broadcast', barber.slug, e)
+    throw e
+  }
   const snapshot = boardSnapshot(entries, barber)
   emitQueueUpdate(barber.id, snapshot)
 
   for (const e of entries) {
     if (e.status !== 'WAITING') continue
-    const t = await ticketSnapshot(e, barber)
-    emitTicketUpdate(e.id, {
-      id: e.id,
-      number: e.number,
-      position: t.position,
-      etaMinutes: t.etaMinutes,
-      waiting: t.waiting
-    })
-    await notifyEntry(e, t, barber)
+    try {
+      const t = await ticketSnapshot(e, barber)
+      emitTicketUpdate(e.id, {
+        id: e.id,
+        number: e.number,
+        position: t.position,
+        etaMinutes: t.etaMinutes,
+        waiting: t.waiting
+      })
+      await notifyEntry(e, t, barber)
+    } catch (err) {
+      // A single entry's notify failure must not take down the whole broadcast.
+      console.log('[notify:error] broadcast entry', e.id, err)
+    }
   }
 }
 
@@ -205,7 +252,13 @@ async function notifyEntry(e, t, barber) {
 }
 
 export async function getMyTicketRaw(entryId) {
-  const entry = await prisma.queueEntry.findUnique({ where: { id: entryId } })
+  let entry
+  try {
+    entry = await prisma.queueEntry.findUnique({ where: { id: entryId } })
+  } catch (e) {
+    console.log('[db:error] queueEntry.findUnique getMyTicketRaw', entryId, e)
+    throw e
+  }
   if (!entry) return null
   const barber = await prisma.barber.findUnique({ where: { id: entry.barberId } })
   return { entry, barber }

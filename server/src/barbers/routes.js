@@ -43,6 +43,7 @@ router.get('/barbers', async (_req, res, next) => {
     })
     return res.json(barbers.map(publicBarber))
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
@@ -53,6 +54,7 @@ router.get('/barbers/:slug', async (req, res, next) => {
     if (!barber) return res.status(404).json({ error: 'not_found' })
     return res.json(publicBarber(barber))
   } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })

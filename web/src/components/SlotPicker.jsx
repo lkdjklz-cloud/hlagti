@@ -14,6 +14,43 @@ function nextDays(n) {
   return out
 }
 
+function normalizePhone(raw) {
+  return String(raw || '').replace(/[\s.\-()]/g, '').trim()
+}
+
+// Accepts local Algerian numbers (0XX…) or international (+213/00213…) forms.
+function isAlgerianPhone(raw) {
+  const p = normalizePhone(raw)
+  if (!p) return false
+  return /^0\d{9}$/.test(p) || /^(\+|00)213\d{9}$/.test(p) || /^[5-7]\d{8}$/.test(p)
+}
+
+// User-facing message for a failed booking request.
+function bookErrorMessage(e) {
+  if (!e || e.status === undefined) {
+    return 'تعذر إتمام الحجز، تحقق من اتصالك بالإنترنت وحاول مرة أخرى'
+  }
+  switch (e.message) {
+    case 'slot_taken':
+      return 'هذا الموعد محجوز للأسف — اختر وقتًا آخر'
+    case 'slot_in_past':
+    case 'slot_outside_hours':
+    case 'slot_off_grid':
+    case 'invalid_date':
+    case 'invalid_time':
+      return 'الوقت المختار غير متاح — اختر وقتًا آخر'
+    default:
+      return 'تعذر إتمام الحجز، تحقق من اتصالك بالإنترنت وحاول مرة أخرى'
+  }
+}
+
+const errStyle = {
+  color: 'var(--red)',
+  fontSize: 12.5,
+  margin: '-4px 0 10px',
+  fontWeight: 600
+}
+
 export default function SlotPicker({ barber, onBooked }) {
   const toast = useToast()
   const days = nextDays(7)
@@ -24,10 +61,13 @@ export default function SlotPicker({ barber, onBooked }) {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [busy, setBusy] = useState(false)
+  const [fieldErrors, setFieldErrors] = useState({ name: '', phone: '' })
+  const [submitError, setSubmitError] = useState('')
 
   useEffect(() => {
     let alive = true
     setSelected(null)
+    setSubmitError('')
     const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
       date.getDate()
     ).padStart(2, '0')}`
@@ -56,24 +96,52 @@ export default function SlotPicker({ barber, onBooked }) {
     if (r) setSlots(r.slots || [])
   }
 
+  function clearError(field) {
+    setFieldErrors((f) => (f[field] ? { ...f, [field]: '' } : f))
+  }
+
+  function handleName(v) {
+    setName(v)
+    clearError('name')
+  }
+
+  function handlePhone(v) {
+    setPhone(v)
+    clearError('phone')
+  }
+
   async function book() {
+    if (busy) return
     if (!selected) return
+
+    const errors = {}
+    if (!name.trim()) errors.name = 'أدخل اسمك من فضلك'
+    if (!phone.trim()) errors.phone = 'أدخل رقم هاتفك من فضلك'
+    else if (!isAlgerianPhone(phone)) errors.phone = 'رقم الهاتف غير صحيح — مثال: 0550123456 أو +213550123456'
+
+    setFieldErrors(errors)
+    if (errors.name || errors.phone) return
+
     setBusy(true)
+    setSubmitError('')
     const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
       date.getDate()
     ).padStart(2, '0')}`
     try {
       const res = await api(`/barbers/${barber.slug}/slots`, {
         method: 'POST',
-        body: { date: key, time: selected, customerName: name, phone }
+        body: { date: key, time: selected, customerName: name.trim(), phone: normalizePhone(phone) }
       })
       toast(`تم حجز موعدك الساعة ${fmtClock(res.slot.startsAt)}`)
       if (onBooked) onBooked(res.slot)
       setSelected(null)
       setName('')
       setPhone('')
+      setFieldErrors({ name: '', phone: '' })
     } catch (e) {
-      toast(e.message === 'slot_taken' ? 'هذا الموعد محجوز للأسف — اختر وقتًا آخر' : 'تعذّر الحجز')
+      const msg = bookErrorMessage(e)
+      setSubmitError(msg)
+      toast(msg)
     } finally {
       setBusy(false)
       await refresh()
@@ -133,24 +201,34 @@ export default function SlotPicker({ barber, onBooked }) {
         <div className="ticket-cta" style={{ marginTop: '16px' }}>
           <input
             className="input"
-            style={{ marginBottom: '10px' }}
-            placeholder="اسمك (اختياري)"
+            style={{ marginBottom: fieldErrors.name ? '0px' : '10px' }}
+            placeholder="اسمك (إلزامي)"
             maxLength={60}
             value={name}
-            onChange={(e) => setName(e.target.value)}
-            aria-label="اسمك (اختياري)"
+            onChange={(e) => handleName(e.target.value)}
+            aria-label="اسمك (إلزامي)"
+            aria-invalid={!!fieldErrors.name}
+            disabled={busy}
           />
+          {fieldErrors.name && <p style={errStyle}>{fieldErrors.name}</p>}
           <input
             className="input"
-            style={{ marginBottom: '10px' }}
-            placeholder="رقم هاتفك (اختياري — للمكافآت)"
+            style={{ marginBottom: fieldErrors.phone ? '0px' : '10px' }}
+            placeholder="رقم هاتفك (إلزامي — مثال: 0550123456)"
             dir="ltr"
             maxLength={20}
+            inputMode="tel"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            aria-label="رقم هاتفك (اختياري)"
+            onChange={(e) => handlePhone(e.target.value)}
+            aria-label="رقم هاتفك (إلزامي)"
+            aria-invalid={!!fieldErrors.phone}
+            disabled={busy}
           />
-          <button className="btn btn-cta" type="button" disabled={busy} onClick={book}>
+          {fieldErrors.phone && <p style={errStyle}>{fieldErrors.phone}</p>}
+          {submitError && (
+            <p style={{ ...errStyle, margin: '0 0 10px', fontWeight: 700 }}>{submitError}</p>
+          )}
+          <button className="btn btn-cta" type="button" disabled={busy} aria-busy={busy} onClick={book}>
             {busy ? <span className="spinner" aria-hidden="true" /> : <span>تأكيد الحجز — {selected}</span>}
           </button>
         </div>

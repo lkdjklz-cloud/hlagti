@@ -21,10 +21,17 @@ export async function createNotification({
   body,
   data = {}
 }) {
-  const n = await prisma.notification.create({
-    data: { userId, email, key, type, title, body, data: JSON.stringify(data) }
-  })
-  await dispatch(n)
+  let n
+  try {
+    n = await prisma.notification.create({
+      data: { userId, email, key, type, title, body, data: JSON.stringify(data) }
+    })
+  } catch (e) {
+    console.log('[db:error] notification.create', { type, key }, e)
+    throw e
+  }
+  // Delivery failures must never abort the booking/queue flow — log + continue.
+  await dispatch(n).catch((e) => console.log('[notify:error] dispatch', n.id, e))
   return n
 }
 
@@ -33,7 +40,13 @@ async function dispatch(n) {
   const or = []
   if (n.userId) or.push({ userId: n.userId })
   if (data.entryId) or.push({ entryId: data.entryId })
-  const subs = or.length ? await prisma.pushSubscription.findMany({ where: { OR: or } }) : []
+  let subs = []
+  try {
+    subs = or.length ? await prisma.pushSubscription.findMany({ where: { OR: or } }) : []
+  } catch (e) {
+    console.log('[db:error] pushSubscription.findMany', e)
+    return
+  }
 
   let sentPush = false
   if (subs.length && pushConfigured()) {
@@ -42,7 +55,9 @@ async function dispatch(n) {
       const res = await sendPush(sub, payload)
       if (res === true) sentPush = true
       else if (res === 'gone') {
-        await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => {})
+        await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch((e) =>
+          console.log('[db:error] pushSubscription.delete', e)
+        )
       }
     }
   } else if (subs.length) {
@@ -52,26 +67,40 @@ async function dispatch(n) {
   let sentEmail = false
   if (n.email) sentEmail = await sendEmail({ to: n.email, subject: n.title, text: n.body })
 
-  await prisma.notification.update({ where: { id: n.id }, data: { sentPush, sentEmail } })
+  try {
+    await prisma.notification.update({ where: { id: n.id }, data: { sentPush, sentEmail } })
+  } catch (e) {
+    console.log('[db:error] notification.update', n.id, e)
+  }
 }
 
 // True if a notification with the same key (type:entryId) exists for today.
 export async function hasNotifiedToday(key) {
   if (!key) return false
-  const found = await prisma.notification.findFirst({
-    where: { key, createdAt: { gte: startOfTodayLocal() } }
-  })
-  return !!found
+  try {
+    const found = await prisma.notification.findFirst({
+      where: { key, createdAt: { gte: startOfTodayLocal() } }
+    })
+    return !!found
+  } catch (e) {
+    console.log('[db:error] notification.findFirst hasNotifiedToday', e)
+    throw e
+  }
 }
 
 // Latest stored position for a "position" style notification (change detection).
 export async function lastPosition(key) {
-  const found = await prisma.notification.findFirst({
-    where: { type: 'position', key },
-    orderBy: { createdAt: 'desc' }
-  })
-  if (!found) return null
-  return parseData(found.data).position
+  try {
+    const found = await prisma.notification.findFirst({
+      where: { type: 'position', key },
+      orderBy: { createdAt: 'desc' }
+    })
+    if (!found) return null
+    return parseData(found.data).position
+  } catch (e) {
+    console.log('[db:error] notification.findFirst lastPosition', e)
+    throw e
+  }
 }
 
 // Notify a barber (stored in their outbox + push + live socket badge).
