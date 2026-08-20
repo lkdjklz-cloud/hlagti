@@ -13,6 +13,12 @@ export function signGuestTicket(entryId) {
   })
 }
 
+export function signBookingToken(slotId) {
+  return jwt.sign({ type: 'booking', slotId }, config.jwtSecret, {
+    expiresIn: `${config.guestTicketTtlHours}h`
+  })
+}
+
 export function verifyToken(token) {
   return jwt.verify(token, config.jwtSecret)
 }

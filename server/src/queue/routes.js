@@ -5,6 +5,7 @@ import { resolveBarberBySlug } from '../lib/barbers.js'
 import { activeEntries, boardSnapshot } from './board.js'
 import { joinQueue, cancelQueue, getMyTicketRaw, guestTicketFor } from './service.js'
 import { verifyToken } from '../auth/tokens.js'
+import { authOptional } from '../auth/middleware.js'
 
 const router = Router()
 
@@ -35,10 +36,11 @@ router.get('/barbers/:slug/queue', async (req, res, next) => {
 
 const joinSchema = z.object({
   customerName: z.string().min(1).max(60).optional(),
-  phone: z.string().max(20).optional().nullable()
+  phone: z.string().max(20).optional().nullable(),
+  deviceId: z.string().max(80).optional().nullable()
 })
 
-router.post('/barbers/:slug/queue/join', async (req, res, next) => {
+router.post('/barbers/:slug/queue/join', authOptional, async (req, res, next) => {
   try {
     const barber = await resolveBarberBySlug(req.params.slug)
     if (!barber) return res.status(404).json({ error: 'not_found' })
@@ -50,7 +52,8 @@ router.post('/barbers/:slug/queue/join', async (req, res, next) => {
     const entry = await joinQueue(barber, {
       customerName: parsed.data.customerName,
       phone: parsed.data.phone,
-      userId
+      userId,
+      deviceId: parsed.data.deviceId
     })
     return res.status(201).json({
       entry: {
@@ -67,7 +70,7 @@ router.post('/barbers/:slug/queue/join', async (req, res, next) => {
 })
 
 // My active ticket (restore on reload). Guest via ?token, or logged-in user.
-router.get('/queue/my', async (req, res, next) => {
+router.get('/queue/my', authOptional, async (req, res, next) => {
   let entryId = null
   try {
     const guest = guestFromQuery(req)
@@ -111,11 +114,12 @@ router.get('/queue/my', async (req, res, next) => {
   }
 })
 
-// Cancel by guest token or owner JWT.
-router.delete('/queue/:id', async (req, res, next) => {
+// Cancel by guest token or owner JWT (deviceId also accepted for guest restore).
+router.delete('/queue/:id', authOptional, async (req, res, next) => {
   try {
     const guest = guestFromQuery(req)
-    await cancelQueue(req.params.id, { ticket: guest, user: req.auth || null })
+    const deviceId = typeof req.query.deviceId === 'string' ? req.query.deviceId : null
+    await cancelQueue(req.params.id, { ticket: guest, user: req.auth || null }, null, deviceId)
     return res.json({ ok: true })
   } catch (e) {
     console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)

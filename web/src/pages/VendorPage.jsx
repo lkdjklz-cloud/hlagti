@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../lib/api.js'
 import { useToast } from '../lib/toast.jsx'
@@ -9,15 +9,24 @@ import {
   onTicketRemoved,
   joinTicketRoom
 } from '../lib/socket.js'
-import { saveTicket, loadTicket, clearTicket } from '../lib/ticket.js'
+import {
+  saveTicket,
+  loadTicket,
+  clearTicket,
+  saveBookingToken,
+  loadBookingToken,
+  clearBookingToken
+} from '../lib/ticket.js'
+import { getDeviceId } from '../lib/device.js'
 import { subscribePush, isSubscribed } from '../lib/push.js'
-import { fmtClock } from '../lib/format.js'
+import { fmtClock, dowName } from '../lib/format.js'
 import AppHeader from '../components/AppHeader.jsx'
 import BarberBanner from '../components/BarberBanner.jsx'
 import TicketState from '../components/TicketState.jsx'
 import { ConfirmTicket } from '../components/ConfirmTicket.jsx'
 import SlotPicker from '../components/SlotPicker.jsx'
 import ServicesMenu from '../components/ServicesMenu.jsx'
+import ConfirmDialog from '../components/ConfirmDialog.jsx'
 
 function estStartMinutes(etaMinutes) {
   const d = new Date(Date.now() + (etaMinutes || 0) * 60000)
@@ -32,10 +41,14 @@ export default function VendorPage() {
   const [notFound, setNotFound] = useState(false)
   const [board, setBoard] = useState({ waiting: null, etaMinutes: null })
   const [ticket, setTicket] = useState(null) // active ticket (joined)
+  const [appt, setAppt] = useState(null) // active appointment
+  const [blocked, setBlocked] = useState(null) // active queue booking restored via device/JWT
+  const [confirm, setConfirm] = useState(null) // 'queue' | 'slot' | 'blocked'
   const [busy, setBusy] = useState(false)
   const [pushEnabled, setPushEnabled] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
   const lastAnnounced = useRef(null)
+  const deviceId = useMemo(() => getDeviceId(), [])
 
   // Load barber + board + restore persisted ticket.
   useEffect(() => {
@@ -66,10 +79,24 @@ export default function VendorPage() {
         })
         .catch(() => clearTicket(slug))
     }
+
+    // Restore an active booking (guests via deviceId, owners via JWT).
+    if (deviceId) {
+      api(`/barbers/${slug}/my-booking?deviceId=${encodeURIComponent(deviceId)}`)
+        .then((r) => {
+          if (!alive || !r.booking) return
+          if (r.booking.kind === 'slot' && r.booking.status !== 'CANCELLED') {
+            setAppt({ ...r.booking.slot, token: loadBookingToken(slug) })
+          } else if (r.booking.kind === 'queue' && !loadTicket(slug)) {
+            setBlocked(r.booking.queue)
+          }
+        })
+        .catch(() => {})
+    }
     return () => {
       alive = false
     }
-  }, [slug])
+  }, [slug, deviceId])
 
   // Live board + ticket updates.
   useEffect(() => {
@@ -110,7 +137,7 @@ export default function VendorPage() {
       try {
         const res = await api(`/barbers/${slug}/queue/join`, {
           method: 'POST',
-          body: { customerName: name, phone }
+          body: { customerName: name, phone, deviceId }
         })
         saveTicket(slug, res.token)
         joinTicketRoom(res.token)
@@ -118,22 +145,32 @@ export default function VendorPage() {
 
         const mine = await api(`/queue/my?token=${encodeURIComponent(res.token)}`)
         setTicket(mine.ticket)
+        setBlocked(null)
         toast('تم تأكيد حجزك')
       } catch (e) {
-        toast(e.message === 'forbidden' ? 'حدث خطأ — حاول مجددًا' : 'تعذّر الحجز')
+        toast(
+          e.message === 'already_booked'
+            ? 'لديك حجز نشط لدى هذا الصالون — ألغِ حجزك الحالي أولًا'
+            : e.message === 'forbidden'
+              ? 'حدث خطأ — حاول مجددًا'
+              : 'تعذّر الحجز'
+        )
       } finally {
         setBusy(false)
       }
     },
-    [slug, toast]
+    [slug, toast, deviceId]
   )
 
   const cancel = useCallback(async () => {
     if (!ticket) return
     setBusy(true)
-    const token = loadTicket(slug)
+    const token = loadTicket(slug) || null
     try {
-      await api(`/queue/${ticket.id}?token=${encodeURIComponent(token)}`, { method: 'DELETE' })
+      const q = new URLSearchParams()
+      if (token) q.set('token', token)
+      if (deviceId) q.set('deviceId', deviceId)
+      await api(`/queue/${ticket.id}?${q.toString()}`, { method: 'DELETE' })
       clearTicket(slug)
       setTicket(null)
       lastAnnounced.current = null
@@ -143,7 +180,60 @@ export default function VendorPage() {
     } finally {
       setBusy(false)
     }
-  }, [ticket, slug, toast])
+  }, [ticket, slug, toast, deviceId])
+
+  const cancelBlocked = useCallback(async () => {
+    if (!blocked) return
+    setBusy(true)
+    try {
+      const q = new URLSearchParams()
+      if (deviceId) q.set('deviceId', deviceId)
+      await api(`/queue/${blocked.id}?${q.toString()}`, { method: 'DELETE' })
+      setBlocked(null)
+      toast('أُلغِي حجزك')
+    } catch {
+      toast('تعذّر الإلغاء')
+    } finally {
+      setBusy(false)
+    }
+  }, [blocked, toast, deviceId])
+
+  const onBooked = useCallback(
+    (slot, token) => {
+      saveBookingToken(slug, token)
+      clearTicket(slug)
+      setTicket(null)
+      setBlocked(null)
+      lastAnnounced.current = null
+      setAppt({ ...slot, token })
+      toast(`تم حجز موعدك — ${dowName(slot.startsAt)} الساعة ${fmtClock(slot.startsAt)}`)
+    },
+    [slug, toast]
+  )
+
+  const cancelAppt = useCallback(async () => {
+    if (!appt) return
+    setBusy(true)
+    try {
+      await api(`/barbers/${slug}/slots/${appt.id}/cancel`, {
+        method: 'POST',
+        body: { token: appt.token || null, deviceId }
+      })
+      clearBookingToken(slug)
+      setAppt(null)
+      toast('أُلغِي حجز الموعد')
+    } catch {
+      toast('تعذّر الإلغاء')
+    } finally {
+      setBusy(false)
+    }
+  }, [appt, slug, toast, deviceId])
+
+  function onConfirmCancel() {
+    if (confirm === 'queue') cancel()
+    else if (confirm === 'slot') cancelAppt()
+    else if (confirm === 'blocked') cancelBlocked()
+  }
 
   const push = ticket
     ? {
@@ -233,18 +323,45 @@ export default function VendorPage() {
           <BarberBanner barber={barber} />
 
           <section className="ticket-zone" aria-label="تذكرة الانتظار والحجز">
-            {ticket ? (
+            {appt ? (
+              <article className="ticket" aria-label="حجز الموعد">
+                <span className="ticket-num num">{dowName(appt.startsAt)}</span>
+                <p className="ticket-title">حجزك في {barber.shopName}</p>
+                <p className="ticket-info">
+                  موعدك <b className="num">{fmtClock(appt.startsAt)}</b>
+                  <br />
+                  {appt.status === 'ARRIVED' ? (
+                    <span style={{ color: 'var(--orange)', fontWeight: 700 }}>أنت قادم الآن — جاهز؟</span>
+                  ) : (
+                    'ستظهر حالتك هنا فور وصولك.'
+                  )}
+                </p>
+                <div className="ticket-actions">
+                  <button className="btn btn-ghost" type="button" disabled={busy} onClick={() => setConfirm('slot')}>
+                    {busy ? '…' : 'إلغاء الموعد'}
+                  </button>
+                </div>
+              </article>
+            ) : blocked ? (
+              <article className="ticket" aria-label="حجز نشط">
+                <span className="ticket-num num">{blocked.number}</span>
+                <p className="ticket-title">لديك دور نشط في هذا الصالون</p>
+                <p className="ticket-info">
+                  إنه مزاول حاليًا — {blocked.status === 'SERVING' ? 'دورك الآن' : 'أنت في طابور الانتظار'}.
+                </p>
+              </article>
+            ) : ticket ? (
               <ConfirmTicket
                 ticket={ticket}
                 barber={barber}
                 busy={busy}
-                onCancel={cancel}
+                onCancel={() => setConfirm('queue')}
                 push={push}
               />
             ) : (
               <TicketState barber={barber} board={board} busy={busy} onJoin={join} />
             )}
-            {!ticket && board.etaMinutes !== null && (
+            {!ticket && !appt && !blocked && board.etaMinutes !== null && (
               <p className="ticket-micro">
                 يبدأ دورك تقريبًا الساعة <b className="num">{estStart}</b> — ونُعلمك عندما يبقى
                 شخص واحد فقط قبلك.
@@ -252,7 +369,7 @@ export default function VendorPage() {
             )}
           </section>
 
-          {barber.slotsEnabled && <SlotPicker barber={barber} />}
+          {barber.slotsEnabled && !appt && <SlotPicker barber={barber} onBooked={onBooked} />}
 
           <ServicesMenu services={barber.services} />
         </main>
@@ -263,6 +380,20 @@ export default function VendorPage() {
           <p className="micro">عدد الانتظار يتم تحديثه مباشرة عند الحلّاق · © 2026 حلاقتي</p>
         </footer>
       </div>
+
+      <ConfirmDialog
+        open={!!confirm}
+        title={confirm === 'slot' ? 'إلغاء حجز الموعد' : 'إلغاء حجز الدور'}
+        body={
+          confirm === 'slot'
+            ? 'هل أنت متأكد؟ سيتم إلغاء الموعد نهائيًا وفتحه لحجز زبون آخر.'
+            : 'سيتم إلغاء دورك في الطابور نهائيًا ولن تحتفظ برقمك.'
+        }
+        confirmLabel="إلغاء الحجز"
+        busy={busy}
+        onConfirm={onConfirmCancel}
+        onClose={() => setConfirm(null)}
+      />
     </>
   )
 }

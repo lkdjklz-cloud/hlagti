@@ -1,4 +1,5 @@
 import prisma from '../db.js'
+import { assertNoActiveBooking } from '../lib/booking.js'
 
 export const WEEK_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
 
@@ -106,10 +107,13 @@ export async function slotAvailability(barber, dateStr) {
 }
 
 // Book a slot inside a transaction; conflicts → throws {status:409}.
+// Only one active booking per barber (queue ticket OR booked slot).
 export async function bookSlot(
   barber,
-  { dateStr, time, customerName, customerPhone = null, userId = null }
+  { dateStr, time, customerName, customerPhone = null, userId = null, deviceId = null }
 ) {
+  await assertNoActiveBooking(barber.id, { userId, deviceId })
+
   const date = localDate(dateStr)
   if (Number.isNaN(date.getTime())) {
     const err = new Error('invalid_date')
@@ -166,6 +170,7 @@ export async function bookSlot(
           endsAt: end,
           customerName: (customerName || '').trim() || 'زبون',
           customerPhone: customerPhone || null,
+          guestId: deviceId || null,
           userId,
           status: 'BOOKED'
         }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../lib/api.js'
 import { useToast } from '../lib/toast.jsx'
 import { fmtClock } from '../lib/format.js'
+import { getDeviceId } from '../lib/device.js'
 import { IconClock } from './Icons.jsx'
 
 function nextDays(n) {
@@ -14,23 +15,14 @@ function nextDays(n) {
   return out
 }
 
-function normalizePhone(raw) {
-  return String(raw || '').replace(/[\s.\-()]/g, '').trim()
-}
-
-// Accepts local Algerian numbers (0XX…) or international (+213/00213…) forms.
-function isAlgerianPhone(raw) {
-  const p = normalizePhone(raw)
-  if (!p) return false
-  return /^0\d{9}$/.test(p) || /^(\+|00)213\d{9}$/.test(p) || /^[5-7]\d{8}$/.test(p)
-}
-
 // User-facing message for a failed booking request.
-function bookErrorMessage(e) {
+function bookingErrorMessage(e) {
   if (!e || e.status === undefined) {
     return 'تعذر إتمام الحجز، تحقق من اتصالك بالإنترنت وحاول مرة أخرى'
   }
   switch (e.message) {
+    case 'already_booked':
+      return 'لديك حجز نشط لدى هذا الصالون — يمكنك الحجز مرة ثانية فقط بعد إلغائه'
     case 'slot_taken':
       return 'هذا الموعد محجوز للأسف — اختر وقتًا آخر'
     case 'slot_in_past':
@@ -61,7 +53,6 @@ export default function SlotPicker({ barber, onBooked }) {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [busy, setBusy] = useState(false)
-  const [fieldErrors, setFieldErrors] = useState({ name: '', phone: '' })
   const [submitError, setSubmitError] = useState('')
 
   useEffect(() => {
@@ -96,31 +87,9 @@ export default function SlotPicker({ barber, onBooked }) {
     if (r) setSlots(r.slots || [])
   }
 
-  function clearError(field) {
-    setFieldErrors((f) => (f[field] ? { ...f, [field]: '' } : f))
-  }
-
-  function handleName(v) {
-    setName(v)
-    clearError('name')
-  }
-
-  function handlePhone(v) {
-    setPhone(v)
-    clearError('phone')
-  }
-
   async function book() {
     if (busy) return
     if (!selected) return
-
-    const errors = {}
-    if (!name.trim()) errors.name = 'أدخل اسمك من فضلك'
-    if (!phone.trim()) errors.phone = 'أدخل رقم هاتفك من فضلك'
-    else if (!isAlgerianPhone(phone)) errors.phone = 'رقم الهاتف غير صحيح — مثال: 0550123456 أو +213550123456'
-
-    setFieldErrors(errors)
-    if (errors.name || errors.phone) return
 
     setBusy(true)
     setSubmitError('')
@@ -130,16 +99,21 @@ export default function SlotPicker({ barber, onBooked }) {
     try {
       const res = await api(`/barbers/${barber.slug}/slots`, {
         method: 'POST',
-        body: { date: key, time: selected, customerName: name.trim(), phone: normalizePhone(phone) }
+        body: {
+          date: key,
+          time: selected,
+          customerName: name.trim() || undefined,
+          phone: phone.trim() || undefined,
+          deviceId: getDeviceId()
+        }
       })
       toast(`تم حجز موعدك الساعة ${fmtClock(res.slot.startsAt)}`)
-      if (onBooked) onBooked(res.slot)
+      if (onBooked) onBooked(res.slot, res.token)
       setSelected(null)
       setName('')
       setPhone('')
-      setFieldErrors({ name: '', phone: '' })
     } catch (e) {
-      const msg = bookErrorMessage(e)
+      const msg = bookingErrorMessage(e)
       setSubmitError(msg)
       toast(msg)
     } finally {
@@ -201,30 +175,26 @@ export default function SlotPicker({ barber, onBooked }) {
         <div className="ticket-cta" style={{ marginTop: '16px' }}>
           <input
             className="input"
-            style={{ marginBottom: fieldErrors.name ? '0px' : '10px' }}
-            placeholder="اسمك (إلزامي)"
+            style={{ marginBottom: '10px' }}
+            placeholder="اسمك (اختياري)"
             maxLength={60}
             value={name}
-            onChange={(e) => handleName(e.target.value)}
-            aria-label="اسمك (إلزامي)"
-            aria-invalid={!!fieldErrors.name}
+            onChange={(e) => setName(e.target.value)}
+            aria-label="اسمك (اختياري)"
             disabled={busy}
           />
-          {fieldErrors.name && <p style={errStyle}>{fieldErrors.name}</p>}
           <input
             className="input"
-            style={{ marginBottom: fieldErrors.phone ? '0px' : '10px' }}
-            placeholder="رقم هاتفك (إلزامي — مثال: 0550123456)"
+            style={{ marginBottom: '10px' }}
+            placeholder="رقم هاتفك (اختياري — للمكافآت)"
             dir="ltr"
             maxLength={20}
             inputMode="tel"
             value={phone}
-            onChange={(e) => handlePhone(e.target.value)}
-            aria-label="رقم هاتفك (إلزامي)"
-            aria-invalid={!!fieldErrors.phone}
+            onChange={(e) => setPhone(e.target.value)}
+            aria-label="رقم هاتفك (اختياري)"
             disabled={busy}
           />
-          {fieldErrors.phone && <p style={errStyle}>{fieldErrors.phone}</p>}
           {submitError && (
             <p style={{ ...errStyle, margin: '0 0 10px', fontWeight: 700 }}>{submitError}</p>
           )}

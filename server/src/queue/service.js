@@ -1,7 +1,6 @@
 import prisma from '../db.js'
 import { signGuestTicket } from '../auth/tokens.js'
 import { emitQueueUpdate, emitTicketUpdate, emitTicketRemoved } from '../socket.js'
-import { startOfTodayLocal } from '../lib/barbers.js'
 import {
   createNotification,
   hasNotifiedToday,
@@ -15,23 +14,25 @@ import {
   boardSnapshot,
   ticketSnapshot
 } from './board.js'
+import { assertNoActiveBooking } from '../lib/booking.js'
 
 export async function joinQueue(
   barber,
-  { customerName = 'زبون', phone = null, userId = null } = {}
+  { customerName = 'زبون', phone = null, userId = null, deviceId = null } = {}
 ) {
-  const startOfDay = startOfTodayLocal()
-  let last = null
+  // One active booking per barber (queue ticket OR booked slot).
+  await assertNoActiveBooking(barber.id, { userId, deviceId })
+
+  // Unique daily numbering with carry-over: continue from the highest ACTIVE
+  // number (yesterday's people keep their place), restart at 1 only when empty.
+  let active
   try {
-    last = await prisma.queueEntry.findFirst({
-      where: { barberId: barber.id, joinedAt: { gte: startOfDay } },
-      orderBy: { number: 'desc' }
-    })
+    active = await activeEntries(barber.id)
   } catch (e) {
-    console.log('[db:error] queueEntry.findFirst joinQueue', barber.slug, e)
+    console.log('[db:error] activeEntries joinQueue', barber.slug, e)
     throw e
   }
-  const number = (last?.number || 0) + 1
+  const number = active.length ? active[active.length - 1].number + 1 : 1
 
   let entry
   try {
@@ -41,6 +42,7 @@ export async function joinQueue(
         number,
         customerName: (customerName || '').trim() || 'زبون',
         customerPhone: phone || null,
+        guestId: deviceId || null,
         userId,
         status: 'WAITING',
         joinedAt: new Date()
@@ -84,12 +86,14 @@ async function ensureActive(entryId) {
 
 // actor: { user } (logged-in owner) or { ticket } (guest token)
 // barber: when passed, allows the barber to cancel anyone in their own queue.
-export async function cancelQueue(entryId, actor, barber = null) {
+// deviceId: lets the same device that joined cancel its own ticket.
+export async function cancelQueue(entryId, actor, barber = null, deviceId = null) {
   const entry = await ensureActive(entryId)
   const isBarber = barber && entry.barberId === barber.id
   const isGuest = actor.ticket && actor.ticket.entryId === entryId
   const isOwner = actor.user && entry.userId === actor.user.uid
-  if (!isBarber && !isGuest && !isOwner) {
+  const isDevice = deviceId && entry.guestId === deviceId
+  if (!isBarber && !isGuest && !isOwner && !isDevice) {
     const err = new Error('forbidden')
     err.status = 403
     throw err

@@ -1,0 +1,17 @@
+{
+  "name": "حلاقتي — اعرف دورك قبل أن تصل",
+  "short_name": "حلاقتي",
+  "description": "تذكرة الانتظار المباشرة وحجوزات صالونك المحلي.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0e2440",
+  "theme_color": "#0e2440",
+  "lang": "ar",
+  "dir": "rtl",
+  "categories": ["utilities", "lifestyle"],
+  "icons": [
+    { "src": "/app-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

@@ -1,9 +1,12 @@
 import { z } from 'zod'
 import { Router } from 'express'
+import prisma from '../db.js'
 import { resolveBarberBySlug } from '../lib/barbers.js'
 import { slotAvailability, bookSlot } from './service.js'
 import { notifyBarber } from '../notify/notify.js'
 import { minutesToTime } from './service.js'
+import { signBookingToken, verifyToken } from '../auth/tokens.js'
+import { authOptional } from '../auth/middleware.js'
 
 const router = Router()
 
@@ -26,10 +29,11 @@ const bookSchema = z.object({
   date: z.string(),
   time: z.string(),
   customerName: z.string().max(60).optional(),
-  phone: z.string().max(20).optional().nullable()
+  phone: z.string().max(20).optional().nullable(),
+  deviceId: z.string().max(80).optional().nullable()
 })
 
-router.post('/barbers/:slug/slots', async (req, res, next) => {
+router.post('/barbers/:slug/slots', authOptional, async (req, res, next) => {
   try {
     const barber = await resolveBarberBySlug(req.params.slug)
     if (!barber) return res.status(404).json({ error: 'not_found' })
@@ -42,7 +46,8 @@ router.post('/barbers/:slug/slots', async (req, res, next) => {
       time: parsed.data.time,
       customerName: parsed.data.customerName,
       customerPhone: parsed.data.phone,
-      userId: req.auth ? req.auth.uid : null
+      userId: req.auth ? req.auth.uid : null,
+      deviceId: parsed.data.deviceId
     })
     const [y, m, d] = parsed.data.date.split('-').map(Number)
     const local = new Date(y, m - 1, d)
@@ -55,7 +60,64 @@ router.post('/barbers/:slug/slots', async (req, res, next) => {
       )}.`,
       data: { slotId: slot.id, url: '/dashboard' }
     })
-    return res.status(201).json({ slot })
+    return res.status(201).json({ slot, token: signBookingToken(slot.id) })
+  } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
+    return next(e)
+  }
+})
+
+// ── Customer cancels their own appointment ───────────────────
+// Ownership via booking token, the logged-in account, or the same device.
+const cancelSchema = z.object({
+  token: z.string().optional().nullable(),
+  deviceId: z.string().max(80).optional().nullable()
+})
+
+router.post('/barbers/:slug/slots/:id/cancel', authOptional, async (req, res, next) => {
+  try {
+    const barber = await resolveBarberBySlug(req.params.slug)
+    if (!barber) return res.status(404).json({ error: 'not_found' })
+    const parsed = cancelSchema.safeParse(req.body || {})
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'validation', issues: parsed.error.flatten() })
+    }
+
+    let tokenSlotId = null
+    if (parsed.data.token) {
+      try {
+        const decoded = verifyToken(parsed.data.token)
+        if (decoded.type === 'booking') tokenSlotId = decoded.slotId
+      } catch {
+        tokenSlotId = null
+      }
+    }
+
+    const slot = await prisma.slot.findUnique({ where: { id: req.params.id } })
+    if (!slot || slot.barberId !== barber.id) return res.status(404).json({ error: 'not_found' })
+
+    const ownsByToken = tokenSlotId === slot.id
+    const ownsByUser = req.auth && slot.userId === req.auth.uid
+    const ownsByDevice = parsed.data.deviceId && slot.guestId === parsed.data.deviceId
+    if (!ownsByToken && !ownsByUser && !ownsByDevice) {
+      return res.status(403).json({ error: 'forbidden' })
+    }
+    if (slot.status === 'CANCELLED') return res.status(409).json({ error: 'already_cancelled' })
+    if (slot.status === 'DONE') return res.status(409).json({ error: 'already_done' })
+
+    const updated = await prisma.slot.update({
+      where: { id: slot.id },
+      data: { status: 'CANCELLED' }
+    })
+    await notifyBarber(barber, {
+      type: 'slot_cancelled',
+      title: 'أُلغي حجز موعد',
+      body: `${slot.customerName || 'زبون'} ألغى حجزه الساعة ${minutesToTime(
+        new Date(slot.startsAt).getHours() * 60 + new Date(slot.startsAt).getMinutes()
+      )}.`,
+      data: { slotId: slot.id, url: '/dashboard' }
+    })
+    return res.json({ slot: updated })
   } catch (e) {
     console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="120" fill="#0e2440"/>
+  <circle cx="256" cy="252" r="172" fill="#ffffff"/>
+  <defs>
+    <clipPath id="pole"><rect x="196" y="120" width="120" height="264" rx="60"/></clipPath>
+  </defs>
+  <g clip-path="url(#pole)">
+    <rect x="196" y="120" width="120" height="264" fill="#c22e33"/>
+    <g fill="#ffffff">
+      <g transform="rotate(-45 256 252)">
+        <rect x="140" y="96" width="232" height="42" rx="21"/>
+        <rect x="140" y="174" width="232" height="42" rx="21"/>
+        <rect x="140" y="252" width="232" height="42" rx="21"/>
+        <rect x="140" y="330" width="232" height="42" rx="21"/>
+      </g>
+    </g>
+    <circle cx="196" cy="120" r="30" fill="#0e2440"/>
+  </g>
+</svg>

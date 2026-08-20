@@ -33,6 +33,7 @@ enum SlotStatus {
 
 model User {
   id           String          @id @default(cuid())
+  username     String?         @unique // latin-only public handle, unique per account
   email        String?         @unique
   passwordHash String?
   name         String
@@ -88,6 +89,7 @@ model QueueEntry {
   number       Int
   customerName String
   customerPhone String?
+  guestId      String? // device id for anonymous customers
   userId       String?
   user         User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
   status       QueueStatus @default(WAITING)
@@ -99,6 +101,7 @@ model QueueEntry {
 
   @@index([barberId, status])
   @@index([barberId, number])
+  @@index([barberId, guestId])
 }
 
 model Slot {
@@ -109,6 +112,7 @@ model Slot {
   endsAt       DateTime
   customerName String?
   customerPhone String?
+  guestId      String? // device id for anonymous customers
   userId       String?
   user         User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
   status       SlotStatus @default(BOOKED)

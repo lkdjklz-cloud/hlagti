@@ -16,6 +16,21 @@ export function authRequired(req, res, next) {
   }
 }
 
+// Populates req.auth when a valid owner token is provided, without rejecting
+// anonymous (guest) requests. Useful on public booking endpoints.
+export function authOptional(req, _res, next) {
+  const header = req.headers.authorization || ''
+  if (header.startsWith('Bearer ')) {
+    try {
+      const payload = verifyToken(header.slice(7))
+      if (payload?.uid) req.auth = payload
+    } catch {
+      /* invalid token → treat as anonymous */
+    }
+  }
+  return next()
+}
+
 export function roles(...allowed) {
   return (req, res, next) => {
     if (!req.auth || !allowed.includes(req.auth.role)) {

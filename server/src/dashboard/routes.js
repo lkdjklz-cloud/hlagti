@@ -27,29 +27,44 @@ function boardPayload(req) {
 
 // After a visit finishes, notify the barber when a customer reaches the
 // free-haircut threshold (loyalty enabled and X paid visits completed).
+// Customers are identified by their unique username when logged in, else by phone.
 async function loyaltyAfterVisit(req, { customerName, customerPhone = null, userId = null, paid = true }) {
   const every = req.barber.loyaltyEvery
   if (!every) return
-  const key = userId
-    ? `u:${userId}`
-    : customerPhone
-      ? `p:${customerPhone.replace(/\s+/g, '')}`
-      : null
+  let who = null
+  let key = customerPhone ? `phone:${customerPhone.replace(/\s+/g, '')}` : null
+  if (userId) {
+    who = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { username: true }
+    }).catch((e) => {
+      console.log('[db:error] loyaltyAfterVisit user', userId, e)
+      return null
+    })
+    if (who?.username) key = `username:${who.username}`
+  }
   if (!key) return
   const start = startOfTodayLocal()
   const [q, s] = await Promise.all([
     prisma.queueEntry.findMany({
       where: { barberId: req.barber.id, status: 'DONE', doneAt: { gte: start } },
-      select: { paid: true, userId: true, customerPhone: true }
+      select: { paid: true, userId: true, customerPhone: true, user: { select: { username: true } } }
     }),
     prisma.slot.findMany({
       where: { barberId: req.barber.id, status: 'DONE' },
-      select: { paid: true, userId: true, customerPhone: true }
+      select: { paid: true, userId: true, customerPhone: true, user: { select: { username: true } } }
     })
-  ])
+  ]).catch((e) => {
+    console.log('[db:error] loyaltyAfterVisit count', e)
+    throw e
+  })
   const all = [...q, ...s]
   const paidCount = all.filter((r) => {
-    const k = r.userId ? `u:${r.userId}` : r.customerPhone ? `p:${r.customerPhone.replace(/\s+/g, '')}` : null
+    const k = r.user?.username
+      ? `username:${r.user.username}`
+      : r.customerPhone
+        ? `phone:${r.customerPhone.replace(/\s+/g, '')}`
+        : null
     return k === key && r.paid !== false
   }).length
   const atThreshold = paidCount > 0 && paidCount % every === 0
@@ -57,7 +72,7 @@ async function loyaltyAfterVisit(req, { customerName, customerPhone = null, user
     await notifyBarber(req.barber, {
       type: 'loyalty_reached',
       title: 'مكافأة ولاء 🎁',
-      body: `${customerName} أتمّ ${paidCount} زيارة مدفوعة — زيارته القادمة مجانية!`,
+      body: `${customerName} (@${who?.username || '—'}) أتمّ ${paidCount} زيارة مدفوعة — زيارته القادمة مجانية!`,
       data: { url: '/dashboard' }
     })
   }
@@ -110,7 +125,7 @@ router.post('/queue/:id/done', async (req, res, next) => {
       return res.status(404).json({ error: 'not_found' })
     }
     const updated = await doneEntry(entry.id, { paid: req.body?.paid !== false })
-    loyaltyAfterVisit(req, {
+    await loyaltyAfterVisit(req, {
       customerName: entry.customerName,
       customerPhone: entry.customerPhone,
       userId: entry.userId,
@@ -245,7 +260,7 @@ router.post('/slots/:id/done', async (req, res, next) => {
       where: { id: slot.id },
       data: { status: 'DONE', paid: req.body?.paid !== false }
     })
-    loyaltyAfterVisit(req, {
+    await loyaltyAfterVisit(req, {
       customerName: slot.customerName,
       customerPhone: slot.customerPhone,
       userId: slot.userId,
@@ -409,9 +424,11 @@ router.post('/notifications/read', async (req, res, next) => {
 })
 
 // ── Loyalty ─────────────────────────────────────────────────
-// Customers are identified by userId when logged in, else by phone.
+// Customers are identified by their unique username when logged in, else by phone.
 function loyaltyKey(row) {
-  return row.userId ? `u:${row.userId}` : row.customerPhone ? `p:${row.customerPhone.replace(/\s+/g, '')}` : null
+  if (row.user?.username) return `username:${row.user.username}`
+  if (row.customerPhone) return `phone:${row.customerPhone.replace(/\s+/g, '')}`
+  return null
 }
 
 router.get('/loyalty', async (req, res, next) => {
@@ -421,25 +438,32 @@ router.get('/loyalty', async (req, res, next) => {
     const [queueDone, slotDone] = await Promise.all([
       prisma.queueEntry.findMany({
         where: { barberId: req.barber.id, status: 'DONE', doneAt: { gte: start } },
-        select: { customerName: true, customerPhone: true, paid: true, userId: true }
+        select: {
+          customerName: true,
+          customerPhone: true,
+          paid: true,
+          userId: true,
+          user: { select: { username: true } }
+        }
       }),
       prisma.slot.findMany({
         where: { barberId: req.barber.id, status: 'DONE' },
-        select: { customerName: true, customerPhone: true, paid: true, userId: true }
+        select: {
+          customerName: true,
+          customerPhone: true,
+          paid: true,
+          userId: true,
+          user: { select: { username: true } }
+        }
       })
     ])
 
-    const rows = [
-      ...queueDone.map((r) => ({ ...r, customerName: r.customerName, customerPhone: r.customerPhone })),
-      ...slotDone.map((r) => ({ ...r, customerName: r.customerName, customerPhone: r.customerPhone }))
-    ]
-
     const byKey = new Map()
-    for (const row of rows) {
+    for (const row of [...queueDone, ...slotDone]) {
       const key = loyaltyKey(row)
       if (!key) continue
       const item = byKey.get(key) || {
-        name: row.customerName,
+        name: row.user?.username || row.customerName,
         phone: row.customerPhone,
         paid: 0,
         free: 0
