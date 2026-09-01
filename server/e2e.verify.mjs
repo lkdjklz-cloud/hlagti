@@ -56,13 +56,13 @@ const aId = A.json.entry.id
 const bId = B.json.entry.id
 
 {
-  const { json } = await req(`/queue/my?token=${aTok}`)
+  const { json } = await req(`/queue/my`, { method: 'POST', body: { token: aTok } })
   check('A ticket position = 4 (4 seeded ahead)', json.ticket?.position === 4, JSON.stringify(json.ticket))
   check('A eta = 68', json.ticket?.etaMinutes === 68, JSON.stringify(json.ticket))
 }
 
 {
-  const { json } = await req(`/queue/my?token=${bTok}`)
+  const { json } = await req(`/queue/my`, { method: 'POST', body: { token: bTok } })
   check('B ticket position = 5', json.ticket?.position === 5)
 }
 
@@ -84,12 +84,12 @@ const done1 = await req(`/dashboard/queue/${first.id}/done`, { method: 'POST', t
 check('done first person', done1.status === 200)
 
 {
-  const { json } = await req(`/queue/my?token=${aTok}`)
+  const { json } = await req(`/queue/my`, { method: 'POST', body: { token: aTok } })
   check('A position dropped to 3 after 1 person done', json.ticket?.position === 3, `got ${json.ticket?.position}`)
 }
 
 // 4. Advance (start+done) until A reaches position 0; check milestone notification rows
-let aPos = (await req(`/queue/my?token=${aTok}`)).json.ticket.position
+let aPos = (await req(`/queue/my`, { method: 'POST', body: { token: aTok } })).json.ticket.position
 let guard = 0
 while (aPos > 0 && guard < 8) {
   const board = (await req('/dashboard/queue', { token: barberTok })).json
@@ -97,7 +97,7 @@ while (aPos > 0 && guard < 8) {
   if (!next) break
   await req(`/dashboard/queue/${next.id}/start`, { method: 'POST', token: barberTok })
   await req(`/dashboard/queue/${next.id}/done`, { method: 'POST', token: barberTok })
-  aPos = (await req(`/queue/my?token=${aTok}`)).json.ticket.position
+  aPos = (await req(`/queue/my`, { method: 'POST', body: { token: aTok } })).json.ticket.position
   guard++
 }
 check('A reached position 0 (next up)', aPos === 0, `ended at ${aPos}`)
@@ -105,19 +105,19 @@ check('A reached position 0 (next up)', aPos === 0, `ended at ${aPos}`)
 // 5. B (still waiting behind A) is next; verify notification milestones were recorded,
 //    then B cancels own ticket and their visible status is gone.
 {
-  const { json } = await req(`/queue/my?token=${bTok}`)
+  const { json } = await req(`/queue/my`, { method: 'POST', body: { token: bTok } })
   check('B position updated as queue advanced', json.ticket?.position >= 0 && json.ticket?.position < 5, `now ${json.ticket?.position}`)
 }
-const cancelled = await req(`/queue/${bId}?token=${bTok}`, { method: 'DELETE' })
+const cancelled = await req(`/queue/${bId}`, { method: 'DELETE', body: { token: bTok } })
 check('B cancels own ticket', cancelled.status === 200)
 {
-  const { json } = await req(`/queue/my?token=${bTok}`)
+  const { json } = await req(`/queue/my`, { method: 'POST', body: { token: bTok } })
   check('B ticket gone after cancel', json.ticket === null || json.ticket.status === 'CANCELLED', JSON.stringify(json.ticket))
 }
 
 // 6. Leftover waiters still see correct counts on the board
 {
-  const { json } = await req(`/queue/my?token=${aTok}`)
+  const { json } = await req(`/queue/my`, { method: 'POST', body: { token: aTok } })
   check('A still in position 0 after B cancels', json.ticket?.position === 0, JSON.stringify(json.ticket))
 }
 

@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { memo, useEffect, useMemo, useState } from 'react'
 
 // Leaflet is loaded on demand so the heavy map lib stays OUT of the main
 // bundle — it's only fetched when a shop page actually has coordinates.
-export default function ShopMap({ lat, lng, shopName }) {
+function ShopMap({ lat, lng, shopName }) {
   const [lib, setLib] = useState(null)
   const [ready, setReady] = useState(false)
 
@@ -57,3 +57,5 @@ export default function ShopMap({ lat, lng, shopName }) {
     </div>
   )
 }
+
+export default memo(ShopMap)

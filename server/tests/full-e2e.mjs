@@ -400,7 +400,7 @@ describe('full e2e: queue', () => {
   })
 
   it('my ticket as logged-in customer (position/eta)', async () => {
-    const r = await req('/queue/my', { token: c1.access })
+    const r = await req('/queue/my', { method: 'POST', token: c1.access })
     assert.equal(r.status, 200)
     assert.ok(r.json.ticket)
     assert.equal(r.json.ticket.position, 1)
@@ -409,15 +409,16 @@ describe('full e2e: queue', () => {
   })
 
   it('my ticket by guest token', async () => {
-    const r = await req(`/queue/my?token=${encodeURIComponent(flow.g1.token)}`)
+    const r = await req(`/queue/my`, { method: 'POST', body: { token: flow.g1.token } })
     assert.equal(r.status, 200)
     assert.equal(r.json.ticket.position, 0)
     assert.equal(r.json.ticket.waiting, 2)
   })
 
   it('guest cancels own ticket → ok, board resets, numbering continues', async () => {
-    const r = await req(`/queue/${flow.g1.entry.id}?token=${encodeURIComponent(flow.g1.token)}`, {
-      method: 'DELETE'
+    const r = await req(`/queue/${flow.g1.entry.id}`, {
+      method: 'DELETE',
+      body: { token: flow.g1.token }
     })
     assert.equal(r.status, 200)
     assert.deepEqual(r.json, { ok: true })
@@ -436,8 +437,9 @@ describe('full e2e: queue', () => {
   })
 
   it('cancel with a stranger token → 403', async () => {
-    const r = await req(`/queue/${flow.c1e.id}?token=${encodeURIComponent(flow.g2.token)}`, {
-      method: 'DELETE'
+    const r = await req(`/queue/${flow.c1e.id}`, {
+      method: 'DELETE',
+      body: { token: flow.g2.token }
     })
     assert.equal(r.status, 403)
   })
@@ -1345,8 +1347,9 @@ describe('full e2e: realtime sockets', () => {
   })
 
   it('guest cancels own ticket → ticket:removed + notify to barber + watcher board', async () => {
-    const r = await req(`/queue/${sB.entry.id}?token=${encodeURIComponent(sB.token)}`, {
-      method: 'DELETE'
+    const r = await req(`/queue/${sB.entry.id}`, {
+      method: 'DELETE',
+      body: { token: sB.token }
     })
     assert.equal(r.status, 200)
 

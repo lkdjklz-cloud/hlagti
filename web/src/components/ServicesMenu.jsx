@@ -1,6 +1,7 @@
+import { memo } from 'react'
 import { fmtPrice } from '../lib/format.js'
 
-export default function ServicesMenu({ services }) {
+function ServicesMenu({ services }) {
   return (
     <section className="panel" aria-label="الخدمات والأسعار">
       <h2>الخدمات والأسعار</h2>
@@ -22,3 +23,5 @@ export default function ServicesMenu({ services }) {
     </section>
   )
 }
+
+export default memo(ServicesMenu)

@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api, getToken, setTokens, clearToken } from '../lib/api.js'
 import { useToast } from '../lib/toast.jsx'
 import { disconnectSocket } from '../lib/socket.js'
 import { IconPin, IconScissors } from '../components/Icons.jsx'
 import Lightbox from '../components/Lightbox.jsx'
+import useDialog from '../components/useDialog.js'
 import { getPosition, formatKm } from '../lib/geo.js'
 
 export default function Home() {
@@ -20,12 +21,25 @@ export default function Home() {
   const [near, setNear] = useState(null)
   const [locBusy, setLocBusy] = useState(false)
   const [zoom, setZoom] = useState(null)
+  const listCache = useRef({})
+  const upgradeRef = useDialog({ open: upgradeOpen, onClose: () => setUpgradeOpen(false) })
 
   useEffect(() => {
     let alive = true
     const q = near ? `?lat=${near.lat}&lng=${near.lng}` : ''
+    const cached = listCache.current[q]
+    if (cached) {
+      setBarbers(cached)
+      setError(false)
+      setLoading(false)
+    }
     api(`/barbers${q}`)
-      .then((list) => alive && setBarbers(list))
+      .then((list) => {
+        if (!alive) return
+        listCache.current[q] = list
+        setBarbers(list)
+        setError(false)
+      })
       .catch(() => alive && setError(true))
       .finally(() => alive && setLoading(false))
     return () => {
@@ -149,20 +163,17 @@ export default function Home() {
 
           <div className="stack">
             {barbers.map((b) => (
-              <Link key={b.id} to={`/barber/${b.slug}`} className="card" style={{ display: 'block' }}>
+              <div key={b.id} className="card" style={{ padding: b.photoUrl ? '10px 14px' : '18px' }}>
+                <Link to={`/barber/${b.slug}`} className="card-stretched" aria-label={b.shopName} />
                 <div className="row spread">
                   <div className="row">
                     {b.photoUrl ? (
                       <button
-                        className="avatar avatar-button"
+                        className="avatar avatar-button above-card"
                         type="button"
                         aria-label={`كبّر صورة ${b.shopName}`}
                         style={{ width: 44, height: 44 }}
-                        onClick={(e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                          setZoom({ src: b.photoUrl, alt: b.shopName })
-                        }}
+                        onClick={() => setZoom({ src: b.photoUrl, alt: b.shopName })}
                       >
                         <img src={b.photoUrl} alt={b.shopName} />
                       </button>
@@ -189,12 +200,12 @@ export default function Home() {
                       )}
                     </div>
                   </div>
-                  <span className={`status ${b.open ? '' : 'closed'}`}>
+                  <span className={`status above-card ${b.open ? '' : 'closed'}`}>
                     <span className="dot" aria-hidden="true" />
                     {b.open ? 'مفتوح' : 'مغلق'}
                   </span>
                 </div>
-              </Link>
+              </div>
             ))}
             {!loading && !error && barbers.length === 0 && (
               <p className="empty-state">لا توجد صالونات بعد.</p>
@@ -206,6 +217,7 @@ export default function Home() {
       {upgradeOpen && (
         <div className="modal-backdrop" role="presentation">
           <div
+            ref={upgradeRef}
             className="modal"
             role="dialog"
             aria-modal="true"

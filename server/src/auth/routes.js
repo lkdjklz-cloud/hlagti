@@ -23,6 +23,23 @@ function checkRateLimit(key) {
   return entry.count <= MAX_ATTEMPTS
 }
 
+// IP-scoped rate limiting for write/auth-heavy endpoints.
+const REGISTER_LIMIT = 10 // per IP per window
+const REFRESH_LIMIT = 120
+function checkIpRateLimit(key, max) {
+  const now = Date.now()
+  const entry = loginAttempts.get(key)
+  if (!entry || now > entry.resetAt) {
+    loginAttempts.set(key, { count: 1, resetAt: now + WINDOW_MS })
+    return true
+  }
+  entry.count++
+  return entry.count <= max
+}
+function ipOf(req) {
+  return req.ip || req.connection?.remoteAddress || 'unknown'
+}
+
 // Periodic cleanup of expired entries (every 5 min)
 setInterval(() => {
   const now = Date.now()
@@ -98,6 +115,9 @@ export async function findUniqueUsername(prismaClient, username) {
 }
 
 router.post('/register/barber', async (req, res, next) => {
+  if (!checkIpRateLimit(`reg:barber:${ipOf(req)}`, REGISTER_LIMIT)) {
+    return res.status(429).json({ error: 'too_many_attempts', retryAfter: Math.ceil(WINDOW_MS / 1000) })
+  }
   const parsed = barberRegisterSchema.safeParse(req.body)
   if (!parsed.success) {
     return res.status(400).json({ error: 'validation', issues: parsed.error.flatten() })
@@ -150,6 +170,9 @@ const customerRegisterSchema = z.object({
 })
 
 router.post('/register/customer', async (req, res, next) => {
+  if (!checkIpRateLimit(`reg:customer:${ipOf(req)}`, REGISTER_LIMIT)) {
+    return res.status(429).json({ error: 'too_many_attempts', retryAfter: Math.ceil(WINDOW_MS / 1000) })
+  }
   const parsed = customerRegisterSchema.safeParse(req.body)
   if (!parsed.success) {
     return res.status(400).json({ error: 'validation', issues: parsed.error.flatten() })
@@ -278,6 +301,9 @@ const refreshSchema = z.object({
 })
 
 router.post('/refresh', async (req, res, next) => {
+  if (!checkIpRateLimit(`refresh:${ipOf(req)}`, REFRESH_LIMIT)) {
+    return res.status(429).json({ error: 'too_many_attempts', retryAfter: Math.ceil(WINDOW_MS / 1000) })
+  }
   const parsed = refreshSchema.safeParse(req.body || {})
   if (!parsed.success) {
     return res.status(400).json({ error: 'validation', issues: parsed.error.flatten() })
@@ -294,6 +320,9 @@ router.post('/refresh', async (req, res, next) => {
 })
 
 router.post('/upgrade/barber', authRequired, async (req, res, next) => {
+  if (!checkIpRateLimit(`upgrade:${req.auth.uid}:${ipOf(req)}`, REGISTER_LIMIT)) {
+    return res.status(429).json({ error: 'too_many_attempts', retryAfter: Math.ceil(WINDOW_MS / 1000) })
+  }
   const parsed = upgradeSchema.safeParse(req.body || {})
   if (!parsed.success) {
     return res.status(400).json({ error: 'validation', issues: parsed.error.flatten() })

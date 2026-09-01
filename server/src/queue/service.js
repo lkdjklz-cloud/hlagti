@@ -91,14 +91,16 @@ async function ensureActive(entryId) {
   return entry
 }
 
-// actor: { user } (logged-in owner) or { ticket } (guest token)
+// actor: { user } (logged-in owner) or { ticket } (guest token) or { deviceId }
 // barber: when passed, allows the barber to cancel anyone in their own queue.
 export async function cancelQueue(entryId, actor, barber = null) {
   const entry = await ensureActive(entryId)
   const isBarber = barber && entry.barberId === barber.id
   const isGuest = actor.ticket && actor.ticket.entryId === entryId
   const isOwner = actor.user && entry.userId === actor.user.uid
-  if (!isBarber && !isGuest && !isOwner) {
+  const isDeviceMatch =
+    !isBarber && !isGuest && !isOwner && !!actor.deviceId && entry.guestId === actor.deviceId
+  if (!isBarber && !isGuest && !isOwner && !isDeviceMatch) {
     const err = new Error('forbidden')
     err.status = 403
     throw err

@@ -22,6 +22,19 @@ export function guestFromQuery(req) {
   }
 }
 
+// Guest ticket token supplied via request body (avoids credentials in URLs).
+export function guestFromBody(req) {
+  const token = req.body && req.body.token
+  if (!token || typeof token !== 'string') return null
+  try {
+    const decoded = verifyToken(token)
+    if (decoded.type === 'guest') return decoded
+    return null
+  } catch {
+    return null
+  }
+}
+
 // Public board: waiting count, in-service, eta.
 router.get('/barbers/:slug/queue', async (req, res, next) => {
   try {
@@ -69,11 +82,11 @@ router.post('/barbers/:slug/queue/join', authOptional, async (req, res, next) =>
   }
 })
 
-// My active ticket (restore on reload). Guest via ?token, or logged-in user.
-router.get('/queue/my', authOptional, async (req, res, next) => {
+// My active ticket (restore on reload). Guest via body token, or logged-in user.
+router.post('/queue/my', authOptional, async (req, res, next) => {
   let entryId = null
   try {
-    const guest = guestFromQuery(req)
+    const guest = guestFromBody(req)
     if (req.auth && req.auth.uid) {
       const mine = await prisma.queueEntry.findFirst({
         where: { userId: req.auth.uid, status: { in: ['WAITING', 'IN_SERVICE'] } },
@@ -116,11 +129,15 @@ router.get('/queue/my', authOptional, async (req, res, next) => {
   }
 })
 
-// Cancel by guest token or owner JWT (deviceId also accepted for guest restore).
+// Cancel by guest token, matching device, or owner JWT.
 router.delete('/queue/:id', authOptional, async (req, res, next) => {
   try {
-    const guest = guestFromQuery(req)
-    await cancelQueue(req.params.id, { ticket: guest, user: req.auth || null })
+    const guest = guestFromBody(req) || guestFromQuery(req)
+    const deviceId =
+      (req.body && typeof req.body.deviceId === 'string' ? req.body.deviceId : null) ||
+      (typeof req.query.deviceId === 'string' ? req.query.deviceId : null) ||
+      null
+    await cancelQueue(req.params.id, { ticket: guest, user: req.auth || null, deviceId })
     return res.json({ ok: true })
   } catch (e) {
     console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)

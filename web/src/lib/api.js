@@ -1,25 +1,16 @@
 const TOKEN_KEY = 'hlagti:jwt'
-const REFRESH_KEY = 'hlagti:refresh'
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY)
 }
-export function getRefreshToken() {
-  return localStorage.getItem(REFRESH_KEY)
-}
 export function setToken(token) {
   localStorage.setItem(TOKEN_KEY, token)
 }
-export function setRefreshToken(token) {
-  localStorage.setItem(REFRESH_KEY, token)
-}
-export function setTokens({ accessToken, refreshToken }) {
+export function setTokens({ accessToken }) {
   if (accessToken) localStorage.setItem(TOKEN_KEY, accessToken)
-  if (refreshToken) localStorage.setItem(REFRESH_KEY, refreshToken)
 }
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY)
-  localStorage.removeItem(REFRESH_KEY)
 }
 
 export async function api(path, { method = 'GET', body, token } = {}) {

@@ -1,4 +1,7 @@
+import useDialog from './useDialog.js'
+
 export default function ConfirmDialog({ open, title, body, confirmLabel = 'تأكيد', cancelLabel = 'إلغاء', busy, onConfirm, onClose }) {
+  const dialogRef = useDialog({ open, onClose })
   if (!open) return null
   return (
     <div
@@ -7,6 +10,7 @@ export default function ConfirmDialog({ open, title, body, confirmLabel = 'تأ�
       role="presentation"
     >
       <div
+        ref={dialogRef}
         className="modal"
         role="dialog"
         aria-modal="true"

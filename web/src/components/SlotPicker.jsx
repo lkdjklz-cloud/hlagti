@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { api } from '../lib/api.js'
 import { useToast } from '../lib/toast.jsx'
-import { fmtClock } from '../lib/format.js'
+import { fmtClock, todayKey, dowShort } from '../lib/format.js'
 import { getDeviceId } from '../lib/device.js'
 import { IconClock } from './Icons.jsx'
 
@@ -44,7 +44,7 @@ const errStyle = {
   fontWeight: 600
 }
 
-export default function SlotPicker({ barber, onBooked }) {
+export default memo(function SlotPicker({ barber, onBooked }) {
   const toast = useToast()
   const days = nextDays(7)
   const [date, setDate] = useState(days[0])
@@ -54,15 +54,15 @@ export default function SlotPicker({ barber, onBooked }) {
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [submitError, setSubmitError] = useState('')
+  const [loadError, setLoadError] = useState(false)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     let alive = true
     setSelected(null)
     setSubmitError('')
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
-      date.getDate()
-    ).padStart(2, '0')}`
-    api(`/barbers/${barber.slug}/slots?date=${key}`)
+    setLoadError(false)
+    api(`/barbers/${barber.slug}/slots?date=${todayKey(date)}`)
       .then((r) => {
         if (!alive) return
         setSlots(r.slots || [])
@@ -72,18 +72,16 @@ export default function SlotPicker({ barber, onBooked }) {
         if (alive) {
           setSlots([])
           setClosed(false)
+          setLoadError(true)
         }
       })
     return () => {
       alive = false
     }
-  }, [barber.slug, date])
+  }, [barber.slug, date, attempt])
 
   async function refresh() {
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
-      date.getDate()
-    ).padStart(2, '0')}`
-    const r = await api(`/barbers/${barber.slug}/slots?date=${key}`).catch(() => null)
+    const r = await api(`/barbers/${barber.slug}/slots?date=${todayKey(date)}`).catch(() => null)
     if (r) setSlots(r.slots || [])
   }
 
@@ -93,14 +91,11 @@ export default function SlotPicker({ barber, onBooked }) {
 
     setBusy(true)
     setSubmitError('')
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
-      date.getDate()
-    ).padStart(2, '0')}`
     try {
       const res = await api(`/barbers/${barber.slug}/slots`, {
         method: 'POST',
         body: {
-          date: key,
+          date: todayKey(date),
           time: selected,
           customerName: name.trim() || undefined,
           deviceId: getDeviceId()
@@ -113,7 +108,6 @@ export default function SlotPicker({ barber, onBooked }) {
     } catch (e) {
       const msg = bookingErrorMessage(e)
       setSubmitError(msg)
-      toast(msg)
     } finally {
       setBusy(false)
       await refresh()
@@ -128,28 +122,33 @@ export default function SlotPicker({ barber, onBooked }) {
       </div>
       <p className="panel-sub">اختر اليوم والوقت المناسبين — لا داعي للانتظار.</p>
 
-      <div className="slot-days" role="tablist" aria-label="اختيار اليوم">
+      <div className="slot-days" aria-label="اختيار اليوم">
         {days.map((d, i) => {
           const isToday = i === 0
           const active = d.getTime() === date.getTime()
-          const names = ['أحد', 'إثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت']
           return (
             <button
               key={d.getTime()}
               type="button"
-              role="tab"
-              aria-selected={active}
+              aria-pressed={active}
               className={`day-chip ${active ? 'active' : ''}`}
               onClick={() => setDate(d)}
             >
-              <span className="dow">{isToday ? 'اليوم' : names[d.getDay()].slice(0, 2)}</span>
+              <span className="dow">{isToday ? 'اليوم' : dowShort(d)}</span>
               {d.getDate()}
             </button>
           )
         })}
       </div>
 
-      {closed ? (
+      {loadError ? (
+        <p className="slot-empty">
+          تعذّر تحميل المواعيد.{' '}
+          <button type="button" className="link-btn" onClick={() => setAttempt((n) => n + 1)}>
+            أعد المحاولة
+          </button>
+        </p>
+      ) : closed ? (
         <p className="slot-empty">الصالون مغلق في هذا اليوم.</p>
       ) : slots.length === 0 ? (
         <p className="slot-empty">لا توجد أوقات متاحة في هذا اليوم.</p>
@@ -196,4 +195,4 @@ export default function SlotPicker({ barber, onBooked }) {
       </p>
     </section>
   )
-}
+})

@@ -85,7 +85,7 @@ if (free) {
 {
   const join2 = await req(`/barbers/${slug}/queue/join`, { method: 'POST', body: { customerName: 'ملغي' } })
   const id2 = join2.json.entry.id
-  const cancelled = await req(`/queue/${id2}?token=${encodeURIComponent(join2.json.token)}`, { method: 'DELETE' })
+  const cancelled = await req(`/queue/${id2}`, { method: 'DELETE', body: { token: join2.json.token } })
   check('guest cancel ok', cancelled.status === 200)
   const notifs = await req('/dashboard/notifications', { token: tok })
   check('barber notified on cancel', notifs.json.notifications.some((n) => n.type === 'queue_cancelled'))

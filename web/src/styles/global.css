@@ -441,6 +441,17 @@ h1, h2, h3, h4 { text-wrap: balance; }
   border-radius: var(--radius-l);
   box-shadow: var(--shadow-sm);
   padding: 18px;
+  position: relative;
+}
+.card-stretched {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+.card-stretched:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.above-card {
+  position: relative;
+  z-index: 2;
 }
 .input, .select, .textarea {
   width: 100%;

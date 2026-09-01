@@ -4,6 +4,7 @@ import { api, clearToken, getToken } from '../lib/api.js'
 import { useToast } from '../lib/toast.jsx'
 import {
   joinBarberRoom,
+  leaveBarberRoom,
   disconnectSocket,
   onQueueUpdate,
   onNotifyNew
@@ -11,6 +12,7 @@ import {
 import { fmtClock, fmtRelative } from '../lib/format.js'
 import { subscribePush } from '../lib/push.js'
 import { IconScissors, IconPlus, IconSettings, IconBell, IconTrash, IconStar } from '../components/Icons.jsx'
+import ConfirmDialog from '../components/ConfirmDialog.jsx'
 
 const TABS = [
   { k: 'queue', label: 'الطابور' },
@@ -34,7 +36,10 @@ export default function Dashboard() {
   const [pushBusy, setPushBusy] = useState(false)
   const [bootError, setBootError] = useState(null)
   const [freeChecks, setFreeChecks] = useState({})
+  const [confirmAction, setConfirmAction] = useState(null)
   const booted = useRef(false)
+  const joinedBarberId = useRef(null)
+  const queueDebounce = useRef(null)
 
   const refresh = useCallback(async () => {
     try {
@@ -78,6 +83,7 @@ export default function Dashboard() {
         setAuth(me)
         setData((d) => ({ ...(d || {}), ...board, slots: [], appointments: [] }))
         joinBarberRoom(me.barber.id)
+        joinedBarberId.current = me.barber.id
         refresh()
         loadNotifs()
       })
@@ -88,6 +94,11 @@ export default function Dashboard() {
       })
     return () => {
       alive = false
+      if (joinedBarberId.current) {
+        leaveBarberRoom(joinedBarberId.current)
+        joinedBarberId.current = null
+      }
+      disconnectSocket()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -98,7 +109,11 @@ export default function Dashboard() {
       return
     }
     const offQueue = onQueueUpdate(() => {
-      refresh()
+      if (queueDebounce.current) clearTimeout(queueDebounce.current)
+      queueDebounce.current = setTimeout(() => {
+        queueDebounce.current = null
+        refresh()
+      }, 500)
     })
     const offNotify = onNotifyNew((n) => {
       if (n && n.id) {
@@ -107,6 +122,10 @@ export default function Dashboard() {
       }
     })
     return () => {
+      if (queueDebounce.current) {
+        clearTimeout(queueDebounce.current)
+        queueDebounce.current = null
+      }
       offQueue()
       offNotify()
     }
@@ -136,6 +155,20 @@ export default function Dashboard() {
       setBusyId(null)
     }
   }
+
+  function runConfirm() {
+    if (!confirmAction) return
+    const { kind, id } = confirmAction
+    setConfirmAction(null)
+    if (kind === 'queue') act(confirmAction.action, id)
+    else if (kind === 'slot') slotAct(confirmAction.action, id)
+  }
+
+  const confirmBusy =
+    confirmAction &&
+    (confirmAction.kind === 'queue'
+      ? busyId === `${confirmAction.id}:${confirmAction.action}`
+      : busyId === `slot-${confirmAction.id}:${confirmAction.action}`)
 
   async function walkIn(e) {
     e.preventDefault()
@@ -426,7 +459,7 @@ export default function Dashboard() {
                         ) : (
                           <span className="chip">{i} قبله</span>
                         )}
-                        <button className="icon-btn" title="إلغاء" aria-label="إلغاء" disabled={busyId === `${e.id}:cancel`} onClick={() => act('cancel', e.id)}>
+                        <button className="icon-btn" title="إلغاء" aria-label="إلغاء" disabled={busyId === `${e.id}:cancel`} onClick={() => setConfirmAction({ kind: 'queue', action: 'cancel', id: e.id })}>
                           <IconTrash />
                         </button>
                       </div>
@@ -462,7 +495,7 @@ export default function Dashboard() {
                             <span className="chip" style={{ fontSize: 15 }}>{fmtClock(s.startsAt)}</span>
                             <strong style={{ flex: 1 }}>{s.customerName || 'زبون'}{s.customerPhone ? ` • ${s.customerPhone}` : ''}</strong>
                             {s.loyaltyNextFree && <span className="chip gold" style={{ fontSize: 11 }}>🎁 مجانية قادمة</span>}
-                            <button className="btn btn-secondary" style={{ width: 'auto', padding: '8px 14px', fontSize: 13 }} onClick={() => slotAct('cancel', s.id)}>
+                            <button className="btn btn-secondary" style={{ width: 'auto', padding: '8px 14px', fontSize: 13 }} onClick={() => setConfirmAction({ kind: 'slot', action: 'cancel', id: s.id })}>
                               إلغاء
                             </button>
                           </div>
@@ -530,7 +563,7 @@ export default function Dashboard() {
                             <button className="btn btn-secondary" style={{ width: 'auto', padding: '9px 14px', fontSize: 13 }} disabled={busyId === `slot-${s.id}:arrive`} onClick={() => slotAct('arrive', s.id)}>
                               {busyId === `slot-${s.id}:arrive` ? <span className="spinner" aria-hidden="true" /> : 'حضر'}
                             </button>
-                            <button className="btn btn-secondary" style={{ width: 'auto', padding: '9px 14px', fontSize: 13 }} disabled={busyId === `slot-${s.id}:cancel`} onClick={() => slotAct('cancel', s.id)}>
+                            <button className="btn btn-secondary" style={{ width: 'auto', padding: '9px 14px', fontSize: 13 }} disabled={busyId === `slot-${s.id}:cancel`} onClick={() => setConfirmAction({ kind: 'slot', action: 'cancel', id: s.id })}>
                               حذف
                             </button>
                           </>
@@ -616,6 +649,19 @@ export default function Dashboard() {
           </main>
         )}
       </div>
+      <ConfirmDialog
+        open={!!confirmAction}
+        title={confirmAction && confirmAction.action === 'cancel' ? 'تأكيد الإلغاء' : 'تأكيد العملية'}
+        body={
+          confirmAction && confirmAction.action === 'cancel'
+            ? 'سيتم إلغاء هذا البند ولا يمكن التراجع. هل تريد المتابعة؟'
+            : 'هل تريد تنفيذ هذه العملية؟'
+        }
+        confirmLabel={confirmAction && confirmAction.action === 'cancel' ? 'إلغاء' : 'تأكيد'}
+        busy={!!confirmBusy}
+        onConfirm={runConfirm}
+        onClose={() => setConfirmAction(null)}
+      />
     </>
   )
 }

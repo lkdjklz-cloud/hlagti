@@ -4,11 +4,13 @@ import { api, getToken } from '../lib/api.js'
 import { useToast } from '../lib/toast.jsx'
 import {
   joinBarberRoom,
+  leaveBarberRoom,
   onQueueUpdate,
   onTicketUpdate,
   onTicketRemoved,
   onLoyaltyCelebrate,
-  joinTicketRoom
+  joinTicketRoom,
+  disconnectSocket
 } from '../lib/socket.js'
 import {
   saveTicket,
@@ -52,6 +54,7 @@ export default function VendorPage() {
   const [loy, setLoy] = useState(null)
   const [celebration, setCelebration] = useState(null)
   const lastAnnounced = useRef(null)
+  const joinedBarberId = useRef(null)
   const deviceId = useMemo(() => getDeviceId(), [])
 
   // Load barber + board + restore persisted ticket.
@@ -62,6 +65,7 @@ export default function VendorPage() {
         if (!alive) return
         setBarber(b)
         joinBarberRoom(b.id)
+        joinedBarberId.current = b.id
       })
       .catch(() => alive && setNotFound(true))
 
@@ -71,7 +75,7 @@ export default function VendorPage() {
 
     const saved = loadTicket(slug)
     if (saved) {
-      api(`/queue/my?token=${encodeURIComponent(saved)}`)
+      api(`/queue/my`, { method: 'POST', body: { token: saved } })
         .then((r) => {
           if (!alive) return
           if (r.ticket && r.ticket.status !== 'CANCELLED') {
@@ -99,6 +103,9 @@ export default function VendorPage() {
     }
     return () => {
       alive = false
+      leaveBarberRoom(joinedBarberId.current)
+      joinedBarberId.current = null
+      disconnectSocket()
     }
   }, [slug, deviceId])
 
@@ -179,7 +186,7 @@ export default function VendorPage() {
         joinTicketRoom(res.token)
         lastAnnounced.current = null
 
-        const mine = await api(`/queue/my?token=${encodeURIComponent(res.token)}`)
+        const mine = await api(`/queue/my`, { method: 'POST', body: { token: res.token } })
         setTicket(mine.ticket)
         setCelebration(null)
         if (mine.ticket?.loyalty) setLoy(mine.ticket.loyalty)
@@ -205,10 +212,10 @@ export default function VendorPage() {
     setBusy(true)
     const token = loadTicket(slug) || null
     try {
-      const q = new URLSearchParams()
-      if (token) q.set('token', token)
-      if (deviceId) q.set('deviceId', deviceId)
-      await api(`/queue/${ticket.id}?${q.toString()}`, { method: 'DELETE' })
+      await api(`/queue/${ticket.id}`, {
+        method: 'DELETE',
+        body: { token, deviceId }
+      })
       clearTicket(slug)
       setTicket(null)
       lastAnnounced.current = null
@@ -224,9 +231,7 @@ export default function VendorPage() {
     if (!blocked) return
     setBusy(true)
     try {
-      const q = new URLSearchParams()
-      if (deviceId) q.set('deviceId', deviceId)
-      await api(`/queue/${blocked.id}?${q.toString()}`, { method: 'DELETE' })
+      await api(`/queue/${blocked.id}`, { method: 'DELETE', body: { deviceId } })
       setBlocked(null)
       toast('أُلغِي حجزك')
     } catch {

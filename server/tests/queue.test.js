@@ -52,6 +52,21 @@ test('cancelQueue removes person; positions for those behind recompute', async (
   assert.equal(snap.waiting, 3)
 })
 
+test('cancelQueue device-match allows a guest to cancel their own entry', async () => {
+  const j = await joinQueue(barber.row, { customerName: 'بالجهاز', deviceId: `dev-x-${Date.now()}` })
+  await cancelQueue(j.id, { user: null, ticket: null, deviceId: j.guestId })
+  const gone = await prisma.queueEntry.findUnique({ where: { id: j.id } })
+  assert.equal(gone.status, 'CANCELLED')
+})
+
+test('cancelQueue rejects a mismatched device', async () => {
+  const j = await joinQueue(barber.row, { customerName: 'جهاز آخر', deviceId: `dev-y-${Date.now()}` })
+  await assert.rejects(
+    () => cancelQueue(j.id, { user: null, ticket: null, deviceId: 'someone-else-device' }),
+    (e) => e.status === 403
+  )
+})
+
 after(async () => {
   await prisma.queueEntry.deleteMany({ where: { barber: { slug: 'test-salon' } } })
   await prisma.barber.delete({ where: { id: barber.row.id } })
