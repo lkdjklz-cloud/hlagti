@@ -47,7 +47,7 @@ test('cancelQueue removes person; positions for those behind recompute', async (
   assert.equal(positionOf(after, e3.number), 1)
 
   const b = await prisma.barber.findUnique({ where: { id: barber.row.id } })
-  const snap = boardSnapshot(after, b)
+  const snap = await boardSnapshot(after, b)
   assert.equal(snap.nextNumber, 5)
   assert.equal(snap.waiting, 3)
 })

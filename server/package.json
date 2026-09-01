@@ -10,7 +10,8 @@
     "migrate": "prisma migrate dev",
     "dbpush": "prisma db push",
     "generate": "prisma generate",
-    "test": "node --test tests/queue.test.js tests/notify.test.js"
+    "test": "node --test tests/queue.test.js tests/notify.test.js",
+    "test:e2e": "node --test tests/full-e2e.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",
@@ -19,13 +20,15 @@
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
+    "multer": "^2.3.0",
     "nodemailer": "^6.9.16",
     "socket.io": "^4.8.1",
     "web-push": "^3.6.7",
     "zod": "^3.24.1"
   },
   "devDependencies": {
-    "prisma": "^6.5.0"
+    "prisma": "^6.5.0",
+    "socket.io-client": "^4.8.3"
   },
   "allowScripts": {
     "@prisma/client@6.19.3": true,

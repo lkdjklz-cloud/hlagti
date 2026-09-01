@@ -29,7 +29,6 @@ const bookSchema = z.object({
   date: z.string(),
   time: z.string(),
   customerName: z.string().max(60).optional(),
-  phone: z.string().max(20).optional().nullable(),
   deviceId: z.string().max(80).optional().nullable()
 })
 
@@ -45,7 +44,6 @@ router.post('/barbers/:slug/slots', authOptional, async (req, res, next) => {
       dateStr: parsed.data.date,
       time: parsed.data.time,
       customerName: parsed.data.customerName,
-      customerPhone: parsed.data.phone,
       userId: req.auth ? req.auth.uid : null,
       deviceId: parsed.data.deviceId
     })
@@ -68,10 +66,10 @@ router.post('/barbers/:slug/slots', authOptional, async (req, res, next) => {
 })
 
 // ── Customer cancels their own appointment ───────────────────
-// Ownership via booking token, the logged-in account, or the same device.
+// Ownership via the booking token issued at booking time or the logged-in
+// account that made the booking (deviceId alone is NOT proof of ownership).
 const cancelSchema = z.object({
-  token: z.string().optional().nullable(),
-  deviceId: z.string().max(80).optional().nullable()
+  token: z.string().optional().nullable()
 })
 
 router.post('/barbers/:slug/slots/:id/cancel', authOptional, async (req, res, next) => {
@@ -98,8 +96,7 @@ router.post('/barbers/:slug/slots/:id/cancel', authOptional, async (req, res, ne
 
     const ownsByToken = tokenSlotId === slot.id
     const ownsByUser = req.auth && slot.userId === req.auth.uid
-    const ownsByDevice = parsed.data.deviceId && slot.guestId === parsed.data.deviceId
-    if (!ownsByToken && !ownsByUser && !ownsByDevice) {
+    if (!ownsByToken && !ownsByUser) {
       return res.status(403).json({ error: 'forbidden' })
     }
     if (slot.status === 'CANCELLED') return res.status(409).json({ error: 'already_cancelled' })

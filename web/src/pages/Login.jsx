@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, Link, useSearchParams } from 'react-router-dom'
-import { api, setToken } from '../lib/api.js'
+import { api, setTokens } from '../lib/api.js'
 import { useToast } from '../lib/toast.jsx'
 import { IconScissors } from '../components/Icons.jsx'
 
@@ -16,8 +16,9 @@ export default function Login() {
     const barber = (params.get('role') || 'barber') === 'barber'
     return {
       role: barber ? 'barber' : 'customer',
-      email: barber ? 'demo@barber.test' : '',
-      password: barber ? 'demo1234' : '',
+      email: '',
+      phone: '',
+      password: '',
       username: '',
       name: '',
       shopName: '',
@@ -36,7 +37,7 @@ export default function Login() {
     setForm((f) => ({
       ...f,
       role,
-      ...(role === 'barber' ? { email: 'demo@barber.test', password: 'demo1234' } : { email: '', password: '' })
+      ...(role === 'barber' ? { email: '', password: '' } : { email: '', password: '' })
     }))
   }
 
@@ -70,11 +71,12 @@ export default function Login() {
             area: form.area,
             city: form.city,
             email: form.email,
+            phone: form.phone || undefined,
             password: form.password
           }
         })
       }
-      setToken(res.token)
+      setTokens(res)
       toast(mode === 'login' ? 'تم الدخول بنجاح' : 'تم إنشاء الحساب')
       if (res.user?.role === 'BARBER') navigate('/dashboard')
       else navigate('/')
@@ -82,6 +84,12 @@ export default function Login() {
       if (err.message === 'bad_credentials') toast('بيانات الدخول غير صحيحة')
       else if (err.message === 'username_taken') toast('اسم المستخدم محجوز — اختر اسمًا آخر')
       else if (err.message === 'email_taken') toast('البريد مسجّل بالفعل — سجّل دخولك')
+      else if (err.message === 'phone_taken') toast('رقم الهاتف مسجّل بالفعل — سجّل دخولك')
+      else if (err.message === 'validation') {
+        const issues = err.issues?.fieldErrors || {}
+        const first = Object.values(issues).flat().find(Boolean)
+        toast(first || 'تحقق من الحقول المدخلة')
+      }
       else toast('حدث خطأ، حاول مجددًا')
     } finally {
       setBusy(false)
@@ -154,11 +162,21 @@ export default function Login() {
                     <label className="label">اسمك</label>
                     <input className="input" value={form.name} onChange={(e) => set('name', e.target.value)} required />
                   </div>
+                  {!isBarber && (
+                    <div className="field">
+                      <label className="label">رقم الهاتف (اختياري)</label>
+                      <input className="input" type="tel" dir="ltr" value={form.phone} onChange={(e) => set('phone', e.target.value)} />
+                    </div>
+                  )}
                   {isBarber && (
                     <>
                       <div className="field">
                         <label className="label">اسم الصالون</label>
                         <input className="input" value={form.shopName} onChange={(e) => set('shopName', e.target.value)} required />
+                      </div>
+                      <div className="field">
+                        <label className="label">رقم الهاتف</label>
+                        <input className="input" type="tel" dir="ltr" value={form.phone} onChange={(e) => set('phone', e.target.value)} required />
                       </div>
                       <div className="row" style={{ marginBottom: '14px' }}>
                         <div className="field inline-field">
@@ -176,7 +194,7 @@ export default function Login() {
               )}
 
               <div className="field">
-                <label className="label">البريد الإلكتروني</label>
+                <label className="label">البريد الإلكتروني أو رقم الهاتف</label>
                 <input className="input" type="email" value={form.email} onChange={(e) => set('email', e.target.value)} required />
               </div>
               <div className="field">
@@ -196,6 +214,14 @@ export default function Login() {
                   <button className="link-btn" type="button" onClick={() => setMode('register')}>
                     {isBarber ? 'سجّل صالونك' : 'أنشئ حساب زبون'}
                   </button>
+                  {isBarber && (
+                    <>
+                      {' أو '}
+                      <button className="link-btn" type="button" onClick={() => setForm((f) => ({ ...f, role: 'customer' }))}>
+                        دخول / حساب كزبون
+                      </button>
+                    </>
+                  )}
                 </>
               ) : (
                 <>
@@ -203,8 +229,20 @@ export default function Login() {
                   <button className="link-btn" type="button" onClick={() => setMode('login')}>
                     دخول
                   </button>
+                  {!isBarber && (
+                    <>
+                      {' أو '}
+                      <button className="link-btn" type="button" onClick={() => setForm((f) => ({ ...f, role: 'barber' }))}>
+                        أنا حلّاق
+                      </button>
+                    </>
+                  )}
                 </>
               )}
+            </p>
+            <p style={{ textAlign: 'center', marginTop: 10, fontSize: 14 }}>
+              تريد الانضمام لطابور كزبون؟ لا تحتاج حسابًا —{' '}
+              <Link to="/" className="link-btn">تصفح الصالونات</Link>
             </p>
           </div>
         </main>

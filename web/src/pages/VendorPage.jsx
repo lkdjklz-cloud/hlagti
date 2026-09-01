@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { api } from '../lib/api.js'
+import { api, getToken } from '../lib/api.js'
 import { useToast } from '../lib/toast.jsx'
 import {
   joinBarberRoom,
   onQueueUpdate,
   onTicketUpdate,
   onTicketRemoved,
+  onLoyaltyCelebrate,
   joinTicketRoom
 } from '../lib/socket.js'
 import {
@@ -21,6 +22,7 @@ import { getDeviceId } from '../lib/device.js'
 import { subscribePush, isSubscribed } from '../lib/push.js'
 import { fmtClock, dowName } from '../lib/format.js'
 import AppHeader from '../components/AppHeader.jsx'
+import ShopMap from '../components/ShopMap.jsx'
 import BarberBanner from '../components/BarberBanner.jsx'
 import TicketState from '../components/TicketState.jsx'
 import { ConfirmTicket } from '../components/ConfirmTicket.jsx'
@@ -47,6 +49,8 @@ export default function VendorPage() {
   const [busy, setBusy] = useState(false)
   const [pushEnabled, setPushEnabled] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
+  const [loy, setLoy] = useState(null)
+  const [celebration, setCelebration] = useState(null)
   const lastAnnounced = useRef(null)
   const deviceId = useMemo(() => getDeviceId(), [])
 
@@ -98,6 +102,21 @@ export default function VendorPage() {
     }
   }, [slug, deviceId])
 
+  // The caller's own loyalty progress at this salon (logged-in customers only).
+  useEffect(() => {
+    if (!barber || !getToken()) return
+    let alive = true
+    api(`/barbers/${barber.slug}/loyalty/my`)
+      .then((r) => {
+        if (!alive) return
+        setLoy(r.loyalty || null)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [barber])
+
   // Live board + ticket updates.
   useEffect(() => {
     if (!barber) return
@@ -123,21 +142,38 @@ export default function VendorPage() {
     const offRemoved = onTicketRemoved(() => {
       // Ticket no longer active (cancelled/done by barber).
       setTicket(null)
+      // A finished visit changes the loyalty count — refresh the progress line.
+      if (getToken()) {
+        api(`/barbers/${slug}/loyalty/my`)
+          .then((r) => r.loyalty && setLoy(r.loyalty))
+          .catch(() => {})
+      }
+    })
+    const offCelebrate = onLoyaltyCelebrate((ev) => {
+      if (!ev || !ev.moment) return
+      setCelebration({ ...ev })
+      // Progress likely changed (the free claim just happened) — refresh.
+      if (getToken()) {
+        api(`/barbers/${slug}/loyalty/my`)
+          .then((r) => r.loyalty && setLoy(r.loyalty))
+          .catch(() => {})
+      }
     })
     return () => {
       offQueue()
       offTicket()
       offRemoved()
+      offCelebrate()
     }
-  }, [barber, ticket, toast])
+  }, [barber, ticket, toast, slug])
 
   const join = useCallback(
-    async (name, phone) => {
+    async (name) => {
       setBusy(true)
       try {
         const res = await api(`/barbers/${slug}/queue/join`, {
           method: 'POST',
-          body: { customerName: name, phone, deviceId }
+          body: { customerName: (name || '').trim() || undefined, deviceId }
         })
         saveTicket(slug, res.token)
         joinTicketRoom(res.token)
@@ -145,6 +181,8 @@ export default function VendorPage() {
 
         const mine = await api(`/queue/my?token=${encodeURIComponent(res.token)}`)
         setTicket(mine.ticket)
+        setCelebration(null)
+        if (mine.ticket?.loyalty) setLoy(mine.ticket.loyalty)
         setBlocked(null)
         toast('تم تأكيد حجزك')
       } catch (e) {
@@ -322,7 +360,43 @@ export default function VendorPage() {
         <main>
           <BarberBanner barber={barber} />
 
+          {barber.lat !== undefined && barber.lat !== null && barber.lng !== undefined && barber.lng !== null && (
+            <section className="card" aria-label="موقع الصالون" style={{ margin: '12px 16px', padding: 14 }}>
+              <ShopMap lat={barber.lat} lng={barber.lng} shopName={barber.shopName} />
+              <div style={{ marginTop: 10, textAlign: 'center' }}>
+                <a
+                  className="link-btn"
+                  href={`https://www.google.com/maps/search/?api=1&query=${barber.lat},${barber.lng}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ fontSize: 13.5 }}
+                >
+                  افتح في الخرائط ↗
+                </a>
+              </div>
+            </section>
+          )}
+
           <section className="ticket-zone" aria-label="تذكرة الانتظار والحجز">
+            {celebration && !ticket && !appt && !blocked && (
+              <article
+                className="ticket"
+                role="status"
+                style={{
+                  border: '2px solid var(--gold)',
+                  background: 'linear-gradient(135deg, color-mix(in srgb, var(--gold) 22%, var(--surface)), var(--surface))'
+                }}
+              >
+                <span className="ticket-num" aria-hidden="true">🎉</span>
+                <p className="ticket-title" style={{ marginTop: 0 }}>{celebration.title}</p>
+                <p className="ticket-info">{celebration.body}</p>
+                <div className="ticket-actions">
+                  <button className="btn btn-cta" type="button" onClick={() => setCelebration(null)}>
+                    حلووووو 🎊
+                  </button>
+                </div>
+              </article>
+            )}
             {appt ? (
               <article className="ticket" aria-label="حجز الموعد">
                 <span className="ticket-num num">{dowName(appt.startsAt)}</span>
@@ -347,8 +421,13 @@ export default function VendorPage() {
                 <span className="ticket-num num">{blocked.number}</span>
                 <p className="ticket-title">لديك دور نشط في هذا الصالون</p>
                 <p className="ticket-info">
-                  إنه مزاول حاليًا — {blocked.status === 'SERVING' ? 'دورك الآن' : 'أنت في طابور الانتظار'}.
+                  إنه مزاول حاليًا — {blocked.status === 'IN_SERVICE' ? 'دورك الآن' : 'أنت في طابور الانتظار'}.
                 </p>
+                <div className="ticket-actions">
+                  <button className="btn btn-ghost" type="button" disabled={busy} onClick={() => setConfirm('blocked')}>
+                    {busy ? '…' : 'إلغاء الحجز'}
+                  </button>
+                </div>
               </article>
             ) : ticket ? (
               <ConfirmTicket
@@ -359,7 +438,7 @@ export default function VendorPage() {
                 push={push}
               />
             ) : (
-              <TicketState barber={barber} board={board} busy={busy} onJoin={join} />
+              <TicketState barber={barber} board={board} busy={busy} loyalty={loy} onJoin={join} />
             )}
             {!ticket && !appt && !blocked && board.etaMinutes !== null && (
               <p className="ticket-micro">

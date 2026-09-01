@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { api, getToken, setToken, clearToken } from '../lib/api.js'
+import { api, getToken, setTokens, clearToken } from '../lib/api.js'
 import { useToast } from '../lib/toast.jsx'
+import { disconnectSocket } from '../lib/socket.js'
 import { IconPin, IconScissors } from '../components/Icons.jsx'
+import Lightbox from '../components/Lightbox.jsx'
+import { getPosition, formatKm } from '../lib/geo.js'
 
 export default function Home() {
   const toast = useToast()
@@ -14,17 +17,21 @@ export default function Home() {
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [upgradeBusy, setUpgradeBusy] = useState(false)
   const [upgrade, setUpgrade] = useState({ shopName: '', area: '', city: '' })
+  const [near, setNear] = useState(null)
+  const [locBusy, setLocBusy] = useState(false)
+  const [zoom, setZoom] = useState(null)
 
   useEffect(() => {
     let alive = true
-    api('/barbers')
+    const q = near ? `?lat=${near.lat}&lng=${near.lng}` : ''
+    api(`/barbers${q}`)
       .then((list) => alive && setBarbers(list))
       .catch(() => alive && setError(true))
       .finally(() => alive && setLoading(false))
     return () => {
       alive = false
     }
-  }, [])
+  }, [near])
 
   useEffect(() => {
     if (!getToken()) return
@@ -43,7 +50,7 @@ export default function Home() {
     setUpgradeBusy(true)
     try {
       const res = await api('/auth/upgrade/barber', { method: 'POST', body: upgrade })
-      setToken(res.token)
+      setTokens(res)
       setUpgradeOpen(false)
       toast('أصبحت حلّاقًا — لوحة تحكمك جاهزة!')
       navigate('/dashboard')
@@ -55,10 +62,29 @@ export default function Home() {
   }
 
   function logout() {
+    disconnectSocket()
     clearToken()
     setMe(null)
     navigate('/')
     toast('تم تسجيل الخروج')
+  }
+
+  async function locate() {
+    if (locBusy) return
+    setLocBusy(true)
+    try {
+      const pos = await getPosition()
+      setNear(pos)
+      toast('تم تحديد موقعك — تُعرض الأقرب أولاً')
+    } catch (err) {
+      toast(err.message === 'geolocation_denied' ? 'مشاركة الموقع غير مفعّلة' : 'تعذّر تحديد موقعك')
+    } finally {
+      setLocBusy(false)
+    }
+  }
+
+  function resetNear() {
+    setNear(null)
   }
 
   const isBarber = me?.user?.role === 'BARBER'
@@ -104,6 +130,18 @@ export default function Home() {
             تذكرة الانتظار المباشرة لصالونك المحلي — لا مزيد من الانتظار الطويل.
           </p>
 
+          <div className="row" style={{ gap: 10, marginBottom: 18 }}>
+            <button className="btn btn-ghost" type="button" onClick={locate} disabled={locBusy} style={{ fontSize: 13.5 }}>
+              {locBusy ? <span className="spinner" aria-hidden="true" /> : <IconPin width="14" height="14" />}
+              استعمل موقعي
+            </button>
+            {near && (
+              <button className="link-btn" type="button" onClick={resetNear} style={{ fontSize: 13 }}>
+                كل الصالونات
+              </button>
+            )}
+          </div>
+
           {error && (
             <div className="error-box">تعذّر تحميل الصالونات — تأكد أن الخادم يعمل.</div>
           )}
@@ -114,9 +152,25 @@ export default function Home() {
               <Link key={b.id} to={`/barber/${b.slug}`} className="card" style={{ display: 'block' }}>
                 <div className="row spread">
                   <div className="row">
-                    <div className="avatar" aria-hidden="true" style={{ width: 44, height: 44 }}>
-                      <IconScissors width="22" height="22" />
-                    </div>
+                    {b.photoUrl ? (
+                      <button
+                        className="avatar avatar-button"
+                        type="button"
+                        aria-label={`كبّر صورة ${b.shopName}`}
+                        style={{ width: 44, height: 44 }}
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          setZoom({ src: b.photoUrl, alt: b.shopName })
+                        }}
+                      >
+                        <img src={b.photoUrl} alt={b.shopName} />
+                      </button>
+                    ) : (
+                      <div className="avatar" aria-hidden="true" style={{ width: 44, height: 44 }}>
+                        <IconScissors width="22" height="22" />
+                      </div>
+                    )}
                     <div>
                       <div style={{ fontWeight: 800, color: 'var(--navy)', fontSize: 16 }}>
                         {b.shopName}
@@ -125,6 +179,12 @@ export default function Home() {
                         <div className="shop-area">
                           <IconPin width="13" height="13" />
                           {[b.area, b.city].filter(Boolean).join('، ')}
+                        </div>
+                      )}
+                      {near && b.distanceKm !== null && b.distanceKm !== undefined && (
+                        <div className="shop-area" style={{ color: 'var(--success)' }}>
+                          <IconPin width="13" height="13" />
+                          {formatKm(b.distanceKm)} من موقعك
                         </div>
                       )}
                     </div>
@@ -183,6 +243,8 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {zoom && <Lightbox src={zoom.src} alt={zoom.alt} onClose={() => setZoom(null)} />}
     </>
   )
 }

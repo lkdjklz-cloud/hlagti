@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { Router } from 'express'
 import prisma from '../db.js'
 import { verifyToken } from '../auth/tokens.js'
+import { authOptional } from '../auth/middleware.js'
 
 const router = Router()
 
@@ -17,7 +18,7 @@ const schema = z.object({
 })
 
 // Subscribe a device to pushes. Guest via ticketToken (→ entryId) or JWT (→ userId).
-router.post('/push/subscribe', async (req, res, next) => {
+router.post('/push/subscribe', authOptional, async (req, res, next) => {
   try {
     const parsed = schema.safeParse(req.body || {})
     if (!parsed.success) {
@@ -34,6 +35,10 @@ router.post('/push/subscribe', async (req, res, next) => {
       } catch {
         /* invalid guest token */
       }
+    }
+
+    if (!userId && !entryId) {
+      return res.status(401).json({ error: 'auth_required' })
     }
 
     const existing = await prisma.pushSubscription.findUnique({ where: { endpoint } })

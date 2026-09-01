@@ -69,7 +69,7 @@ const bId = B.json.entry.id
 // 3. Barber login + dashboard + advance
 const login = await req('/auth/login', { method: 'POST', body: { email: 'demo@barber.test', password: 'demo1234' } })
 check('barber login ok', login.status === 200 && login.json.barber?.slug === 'salon-boumediene')
-const barberTok = login.json.token
+const barberTok = login.json.accessToken
 
 {
   const { json } = await req('/dashboard/queue', { token: barberTok })

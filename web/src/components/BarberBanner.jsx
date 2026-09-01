@@ -1,14 +1,29 @@
+import { useState } from 'react'
 import { IconPin, IconScissors } from './Icons.jsx'
+import Lightbox from './Lightbox.jsx'
 
 export default function BarberBanner({ barber }) {
+  const [zoom, setZoom] = useState(false)
   const open = barber.open
   const area = [barber.area, barber.city].filter(Boolean).join('، ')
+  const hasPhoto = !!barber.photoUrl
   return (
     <section className="shop" aria-label="معلومات الصالون">
       <div className="shop-top">
-        <div className="avatar" aria-hidden="true">
-          <IconScissors width="28" height="28" />
-        </div>
+        {hasPhoto ? (
+          <button
+            className="avatar avatar-button"
+            type="button"
+            aria-label="كبّر صورة الحلّاق"
+            onClick={() => setZoom(true)}
+          >
+            <img src={barber.photoUrl} alt={barber.shopName} />
+          </button>
+        ) : (
+          <div className="avatar" aria-hidden="true">
+            <IconScissors width="28" height="28" />
+          </div>
+        )}
         <div>
           {area && (
             <span className="shop-area">
@@ -32,6 +47,7 @@ export default function BarberBanner({ barber }) {
           </span>
         ) : null}
       </div>
+      {zoom && <Lightbox src={barber.photoUrl} alt={barber.shopName} onClose={() => setZoom(false)} />}
     </section>
   )
 }

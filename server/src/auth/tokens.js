@@ -2,9 +2,14 @@ import jwt from 'jsonwebtoken'
 import { config } from '../config.js'
 
 export function signUser(user) {
-  return jwt.sign({ uid: user.id, role: user.role }, config.jwtSecret, {
-    expiresIn: '24h'
-  })
+  return {
+    accessToken: jwt.sign({ uid: user.id, role: user.role }, config.jwtSecret, {
+      expiresIn: '1h'
+    }),
+    refreshToken: jwt.sign({ uid: user.id, type: 'refresh' }, config.jwtSecret, {
+      expiresIn: '30d'
+    })
+  }
 }
 
 export function signGuestTicket(entryId) {
@@ -21,4 +26,10 @@ export function signBookingToken(slotId) {
 
 export function verifyToken(token) {
   return jwt.verify(token, config.jwtSecret)
+}
+
+export function verifyRefreshToken(token) {
+  const decoded = jwt.verify(token, config.jwtSecret)
+  if (decoded.type !== 'refresh') throw new Error('invalid_token_type')
+  return decoded
 }

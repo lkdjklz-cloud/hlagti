@@ -65,6 +65,9 @@ model Barber {
   slotsEnabled      Boolean  @default(false)
   slotLengthMinutes Int      @default(30)
   loyaltyEvery      Int? // e.g. 9 → free haircut every 9 PAID visits (null = disabled)
+  lat               Float?
+  lng               Float?
+  photoUrl          String?
   createdAt         DateTime @default(now())
 
   services     Service[]
@@ -100,7 +103,7 @@ model QueueEntry {
   canceledAt   DateTime?
 
   @@index([barberId, status])
-  @@index([barberId, number])
+  @@unique([barberId, number])
   @@index([barberId, guestId])
 }
 
@@ -118,6 +121,7 @@ model Slot {
   status       SlotStatus @default(BOOKED)
   paid         Boolean    @default(true) // false → loyalty free visit
   createdAt    DateTime   @default(now())
+  doneAt       DateTime?
 
   @@index([barberId, startsAt])
 }

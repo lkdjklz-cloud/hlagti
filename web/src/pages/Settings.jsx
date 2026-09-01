@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { api, getToken } from '../lib/api.js'
+import { api, getToken, apiUpload } from '../lib/api.js'
 import { useToast } from '../lib/toast.jsx'
 import { IconScissors } from '../components/Icons.jsx'
+import { getPosition } from '../lib/geo.js'
+import { downscaleImage } from '../lib/image.js'
+import Lightbox from '../components/Lightbox.jsx'
 
 const DAYS = [
   { key: 'sun', label: 'الأحد' },
@@ -20,6 +23,9 @@ export default function Settings() {
   const [form, setForm] = useState(null)
   const [hours, setHours] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [photoBusy, setPhotoBusy] = useState(false)
+  const [photoUrl, setPhotoUrl] = useState(null)
+  const [zoom, setZoom] = useState(false)
 
   useEffect(() => {
     if (!getToken()) return navigate('/login', { replace: true })
@@ -41,8 +47,11 @@ setForm({
           slotsEnabled: me.barber.slotsEnabled,
           slotLengthMinutes: me.barber.slotLengthMinutes,
           loyaltyEvery: me.barber.loyaltyEvery || 0,
-          loyaltyEnabled: !!me.barber.loyaltyEvery
+          loyaltyEnabled: !!me.barber.loyaltyEvery,
+          lat: me.barber.lat ?? '',
+          lng: me.barber.lng ?? ''
         })
+        setPhotoUrl(me.barber.photoUrl || null)
         setHours(wh)
       })
       .catch(() => navigate('/login', { replace: true }))
@@ -62,16 +71,79 @@ setForm({
     })
   }
 
-  function dayOff(key) {
+function dayOff(key) {
     setHours((h) => {
       const next = { ...h, [key]: null }
       return next
     })
   }
 
-  async function save(e) {
+  function useMyLocation() {
+    getPosition()
+      .then((pos) => {
+        set('lat', pos.lat.toFixed(6))
+        set('lng', pos.lng.toFixed(6))
+        toast('تم تحديد موقع الصالون')
+      })
+      .catch((err) =>
+        toast(err.message === 'geolocation_denied' ? 'مشاركة الموقع غير مفعّلة' : 'تعذّر تحديد موقعك')
+      )
+  }
+
+  async function onPhotoSelect(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setPhotoBusy(true)
+    try {
+      const blob = await downscaleImage(file)
+      const fd = new FormData()
+      fd.append('photo', blob, 'photo.jpg')
+      const res = await apiUpload('/dashboard/photo', fd)
+      setPhotoUrl(res.photoUrl)
+      toast('تم رفع الصورة')
+    } catch (err) {
+      toast(err.message === 'invalid_image_type' ? 'اختر ملف صورة صالحًا' : 'تعذّر رفع الصورة')
+    } finally {
+      setPhotoBusy(false)
+    }
+  }
+
+  async function removePhoto() {
+    setPhotoBusy(true)
+    try {
+      await api('/dashboard/photo', { method: 'DELETE' })
+      setPhotoUrl(null)
+      toast('تمت إزالة الصورة')
+    } catch {
+      toast('تعذّرت الإزالة')
+    } finally {
+      setPhotoBusy(false)
+    }
+  }
+
+async function save(e) {
     e.preventDefault()
     setBusy(true)
+    const latEmpty = form.lat === '' || form.lat === null
+    const lngEmpty = form.lng === '' || form.lng === null
+    if (latEmpty !== lngEmpty) {
+      toast('أدخل خطّي العرض والطول معًا، أو امسحهما')
+      setBusy(false)
+      return
+    }
+    const lat = latEmpty ? null : Number(form.lat)
+    const lng = lngEmpty ? null : Number(form.lng)
+    if (lat !== null && (!Number.isFinite(lat) || lat < -90 || lat > 90)) {
+      toast('خط العرض غير صالح')
+      setBusy(false)
+      return
+    }
+    if (lng !== null && (!Number.isFinite(lng) || lng < -180 || lng > 180)) {
+      toast('خط الطول غير صالح')
+      setBusy(false)
+      return
+    }
     const cleanHours = { ...hours }
     for (const k of Object.keys(cleanHours)) {
       const d = cleanHours[k]
@@ -82,6 +154,8 @@ await api('/dashboard/settings', {
         method: 'PATCH',
         body: {
           ...form,
+          lat,
+          lng,
           avgMinutes: Number(form.avgMinutes) || 17,
           slotLengthMinutes: Number(form.slotLengthMinutes) || 30,
           loyaltyEvery: form.loyaltyEnabled ? Number(form.loyaltyEvery) || 9 : null,
@@ -140,6 +214,67 @@ await api('/dashboard/settings', {
             <div className="field">
               <label className="label">نبذة</label>
               <textarea className="textarea" value={form.bio} onChange={(e) => set('bio', e.target.value)} />
+            </div>
+
+            <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, color: 'var(--navy)', fontSize: 19, margin: '20px 0 12px' }}>
+              صورة الحلّاق
+            </h2>
+            <p style={{ color: 'var(--muted)', fontSize: 13, margin: '0 0 12px' }}>
+              تظهر عند الزبائن وتُكبَّر عند اللمس. صور مربّعة أفضل.
+            </p>
+            <div className="row" style={{ gap: 14, alignItems: 'center' }}>
+              {photoUrl ? (
+                <button
+                  className="avatar avatar-button"
+                  type="button"
+                  aria-label="كبّر الصورة"
+                  onClick={() => setZoom(true)}
+                  style={{ width: 64, height: 64 }}
+                >
+                  <img src={photoUrl} alt="صورة الحلّاق" />
+                </button>
+              ) : (
+                <div className="avatar" aria-hidden="true" style={{ width: 64, height: 64 }}>
+                  <IconScissors width="26" height="26" />
+                </div>
+              )}
+              <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
+                <button className="btn btn-ghost" type="button" disabled={photoBusy} onClick={() => document.getElementById('photo-input')?.click()} style={{ fontSize: 13.5 }}>
+                  {photoBusy ? <span className="spinner" aria-hidden="true" /> : 'اختر صورة'}
+                </button>
+                {photoUrl && (
+                  <button className="btn btn-secondary" type="button" disabled={photoBusy} onClick={removePhoto} style={{ fontSize: 13.5 }}>
+                    إزالة
+                  </button>
+                )}
+              </div>
+            </div>
+            <input
+              id="photo-input"
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={onPhotoSelect}
+            />
+
+            <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, color: 'var(--navy)', fontSize: 19, margin: '20px 0 12px' }}>
+              موقع الصالون
+            </h2>
+            <p style={{ color: 'var(--muted)', fontSize: 13, margin: '0 0 12px' }}>
+              حدّد موقعك ليُعرض على الخريطة مع المسافة للزبائن. يمكنك استعمال موقع جهازك الحالي.
+            </p>
+            <button className="btn btn-ghost" type="button" onClick={useMyLocation} style={{ fontSize: 13.5, marginBottom: 12 }}>
+              استعمل موقعي الحالي
+            </button>
+            <div className="row">
+              <div className="field inline-field">
+                <label className="label">خط العرض (Latitude)</label>
+                <input className="input" inputMode="decimal" placeholder="36.753800" value={form.lat} onChange={(e) => set('lat', e.target.value)} />
+              </div>
+              <div className="field inline-field">
+                <label className="label">خط الطول (Longitude)</label>
+                <input className="input" inputMode="decimal" placeholder="3.058800" value={form.lng} onChange={(e) => set('lng', e.target.value)} />
+              </div>
             </div>
 
             <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, color: 'var(--navy)', fontSize: 19, margin: '20px 0 12px' }}>
@@ -227,6 +362,8 @@ await api('/dashboard/settings', {
           </form>
         </main>
       </div>
+
+      {zoom && <Lightbox src={photoUrl} alt="صورة الحلّاق" onClose={() => setZoom(false)} />}
     </>
   )
 }

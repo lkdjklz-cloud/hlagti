@@ -4,6 +4,7 @@ import { api, clearToken, getToken } from '../lib/api.js'
 import { useToast } from '../lib/toast.jsx'
 import {
   joinBarberRoom,
+  disconnectSocket,
   onQueueUpdate,
   onNotifyNew
 } from '../lib/socket.js'
@@ -32,6 +33,7 @@ export default function Dashboard() {
   const [bellOpen, setBellOpen] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
   const [bootError, setBootError] = useState(null)
+  const [freeChecks, setFreeChecks] = useState({})
   const booted = useRef(false)
 
   const refresh = useCallback(async () => {
@@ -168,6 +170,7 @@ export default function Dashboard() {
   }
 
   function logout() {
+    disconnectSocket()
     clearToken()
     navigate('/login')
   }
@@ -367,17 +370,27 @@ export default function Dashboard() {
                           <strong>{e.customerName}</strong>
                           <span style={{ color: 'var(--muted)', fontSize: 13 }}>رقم {e.number}</span>
                           {e.customerPhone && <span style={{ color: 'var(--muted)', fontSize: 12 }}>• {e.customerPhone}</span>}
+                          {e.loyaltyNextFree && (
+                            <span className="chip gold" style={{ fontSize: 11.5 }}>
+                              🎁 حلاقة مجانية — علّمها مجانية
+                            </span>
+                          )}
                         </div>
                         <div className="row" style={{ gap: 6 }}>
                           <label className="label" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, margin: 0, fontSize: 12.5 }}>
-                            <input type="checkbox" id={`free-${e.id}`} style={{ width: 16, height: 16 }} />
+                            <input
+                              type="checkbox"
+                              checked={!!freeChecks[e.id]}
+                              onChange={(ev) => setFreeChecks((c) => ({ ...c, [e.id]: ev.target.checked }))}
+                              style={{ width: 16, height: 16 }}
+                            />
                             مجانية
                           </label>
                           <button
                             className="btn btn-cta"
                             style={{ width: 'auto', padding: '10px 18px', fontSize: 14 }}
                             disabled={busyId === `${e.id}:done`}
-                            onClick={() => act('done', e.id, { paid: !document.getElementById(`free-${e.id}`).checked })}
+                            onClick={() => act('done', e.id, { paid: !freeChecks[e.id] })}
                           >
                             {busyId === `${e.id}:done` ? <span className="spinner" aria-hidden="true" /> : 'إنهاء'}
                           </button>
@@ -400,6 +413,11 @@ export default function Dashboard() {
                             انضم قبل {fmtRelative(e.joinedAt)}
                             {e.customerPhone ? ` • ${e.customerPhone}` : ''}
                           </div>
+                          {e.loyaltyNextFree && (
+                            <span className="chip gold" style={{ fontSize: 11, marginTop: '6px' }}>
+                              🎁 هذه الحلاقة مجانية
+                            </span>
+                          )}
                         </div>
                         {i === 0 ? (
                           <button className="btn btn-cta" style={{ width: 'auto', padding: '10px 16px', fontSize: 13 }} disabled={busyId === `${e.id}:start`} onClick={() => act('start', e.id)}>
@@ -443,6 +461,7 @@ export default function Dashboard() {
                           <div key={s.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px' }}>
                             <span className="chip" style={{ fontSize: 15 }}>{fmtClock(s.startsAt)}</span>
                             <strong style={{ flex: 1 }}>{s.customerName || 'زبون'}{s.customerPhone ? ` • ${s.customerPhone}` : ''}</strong>
+                            {s.loyaltyNextFree && <span className="chip gold" style={{ fontSize: 11 }}>🎁 مجانية قادمة</span>}
                             <button className="btn btn-secondary" style={{ width: 'auto', padding: '8px 14px', fontSize: 13 }} onClick={() => slotAct('cancel', s.id)}>
                               إلغاء
                             </button>
@@ -479,11 +498,30 @@ export default function Dashboard() {
                           <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>
                             {s.customerPhone || 'بدون هاتف'}
                           </div>
+                          {s.loyaltyNextFree && (
+                            <span className="chip gold" style={{ fontSize: 11, marginTop: 4 }}>
+                              🎁 حلاقته قادمة مجانية
+                            </span>
+                          )}
                         </div>
                         {s.status === 'ARRIVED' ? (
                           <>
                             <span className="chip gold">حضر</span>
-                            <button className="btn btn-cta" style={{ width: 'auto', padding: '9px 14px', fontSize: 13 }} disabled={busyId === `slot-${s.id}:done`} onClick={() => slotAct('done', s.id, {})}>
+                            <label className="label" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, margin: 0, fontSize: 12.5 }}>
+                              <input
+                                type="checkbox"
+                                checked={!!freeChecks[`s${s.id}`]}
+                                onChange={(ev) => setFreeChecks((c) => ({ ...c, [`s${s.id}`]: ev.target.checked }))}
+                                style={{ width: 16, height: 16 }}
+                              />
+                              مجانية
+                            </label>
+                            <button
+                              className="btn btn-cta"
+                              style={{ width: 'auto', padding: '9px 14px', fontSize: 13 }}
+                              disabled={busyId === `slot-${s.id}:done`}
+                              onClick={() => slotAct('done', s.id, { paid: !freeChecks[`s${s.id}`] })}
+                            >
                               {busyId === `slot-${s.id}:done` ? <span className="spinner" aria-hidden="true" /> : 'غادر وتم'}
                             </button>
                           </>

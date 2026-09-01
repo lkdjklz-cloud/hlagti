@@ -26,9 +26,14 @@ export function etaFor(position, avgMinutes) {
 }
 
 // Public board snapshot used by the vendor page and socket broadcast.
-export function boardSnapshot(entries, barber) {
+export async function boardSnapshot(entries, barber) {
   const waiting = waitingCount(entries)
   const serving = inService(entries)
+  const lastNum = await prisma.queueEntry.findFirst({
+    where: { barberId: barber.id },
+    orderBy: { number: 'desc' },
+    select: { number: true }
+  })
   return {
     barberId: barber.id,
     open: barber.open,
@@ -36,13 +41,13 @@ export function boardSnapshot(entries, barber) {
     waiting,
     inService: serving ? serving.customerName : null,
     etaMinutes: etaFor(waiting + (serving ? 1 : 0), barber.avgMinutes),
-    nextNumber: entries.length ? entries[entries.length - 1].number + 1 : 1
+    nextNumber: lastNum ? lastNum.number + 1 : 1
   }
 }
 
 // Ticket snapshot for a specific entry (position + eta + status).
-export async function ticketSnapshot(entry, barber) {
-  const entries = await activeEntries(barber.id)
+export async function ticketSnapshot(entry, barber, entries) {
+  if (!entries) entries = await activeEntries(barber.id)
   const pos = positionOf(entries, entry.number)
   return {
     id: entry.id,

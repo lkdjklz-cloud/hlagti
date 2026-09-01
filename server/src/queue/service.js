@@ -18,39 +18,46 @@ import { assertNoActiveBooking } from '../lib/booking.js'
 
 export async function joinQueue(
   barber,
-  { customerName = 'زبون', phone = null, userId = null, deviceId = null } = {}
+  { customerName = 'زبون', userId = null, deviceId = null, customerPhone = null } = {}
 ) {
   // One active booking per barber (queue ticket OR booked slot).
   await assertNoActiveBooking(barber.id, { userId, deviceId })
 
-  // Unique daily numbering with carry-over: continue from the highest ACTIVE
-  // number (yesterday's people keep their place), restart at 1 only when empty.
-  let active
-  try {
-    active = await activeEntries(barber.id)
-  } catch (e) {
-    console.log('[db:error] activeEntries joinQueue', barber.slug, e)
-    throw e
-  }
-  const number = active.length ? active[active.length - 1].number + 1 : 1
-
+  // Unique daily numbering with retry to handle concurrent joins.
+  const MAX_RETRIES = 3
   let entry
-  try {
-    entry = await prisma.queueEntry.create({
-      data: {
-        barberId: barber.id,
-        number,
-        customerName: (customerName || '').trim() || 'زبون',
-        customerPhone: phone || null,
-        guestId: deviceId || null,
-        userId,
-        status: 'WAITING',
-        joinedAt: new Date()
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      entry = await prisma.$transaction(async (tx) => {
+        const last = await tx.queueEntry.findMany({
+          where: { barberId: barber.id },
+          orderBy: { number: 'desc' },
+          take: 1,
+          select: { number: true }
+        })
+        const number = last.length ? last[0].number + 1 : 1
+        return tx.queueEntry.create({
+          data: {
+            barberId: barber.id,
+            number,
+            customerName: (customerName || '').trim() || 'زبون',
+            customerPhone: customerPhone || null,
+            guestId: deviceId || null,
+            userId,
+            status: 'WAITING',
+            joinedAt: new Date()
+          }
+        })
+      })
+      break
+    } catch (e) {
+      if (e.code === 'P2002' && attempt < MAX_RETRIES - 1) {
+        // Unique constraint violation — retry with fresh number
+        continue
       }
-    })
-  } catch (e) {
-    console.log('[db:error] queueEntry.create joinQueue', barber.slug, e)
-    throw e
+      console.log('[db:error] queueEntry.create joinQueue', barber.slug, e)
+      throw e
+    }
   }
 
   await broadcast(barber, [entry.id])
@@ -86,14 +93,12 @@ async function ensureActive(entryId) {
 
 // actor: { user } (logged-in owner) or { ticket } (guest token)
 // barber: when passed, allows the barber to cancel anyone in their own queue.
-// deviceId: lets the same device that joined cancel its own ticket.
-export async function cancelQueue(entryId, actor, barber = null, deviceId = null) {
+export async function cancelQueue(entryId, actor, barber = null) {
   const entry = await ensureActive(entryId)
   const isBarber = barber && entry.barberId === barber.id
   const isGuest = actor.ticket && actor.ticket.entryId === entryId
   const isOwner = actor.user && entry.userId === actor.user.uid
-  const isDevice = deviceId && entry.guestId === deviceId
-  if (!isBarber && !isGuest && !isOwner && !isDevice) {
+  if (!isBarber && !isGuest && !isOwner) {
     const err = new Error('forbidden')
     err.status = 403
     throw err
@@ -177,7 +182,7 @@ export async function doneEntry(entryId, { paid = true } = {}) {
 }
 
 export async function walkIn(barber, { customerName = 'زبون', phone = null } = {}) {
-  return joinQueue(barber, { customerName, phone })
+  return joinQueue(barber, { customerName, customerPhone: phone })
 }
 
 // Recompute the board + every waiting ticket and push to sockets.
@@ -191,26 +196,27 @@ export async function broadcast(barber, _changedEntryIds = []) {
     console.log('[db:error] activeEntries broadcast', barber.slug, e)
     throw e
   }
-  const snapshot = boardSnapshot(entries, barber)
+  const snapshot = await boardSnapshot(entries, barber)
   emitQueueUpdate(barber.id, snapshot)
 
-  for (const e of entries) {
-    if (e.status !== 'WAITING') continue
-    try {
-      const t = await ticketSnapshot(e, barber)
-      emitTicketUpdate(e.id, {
-        id: e.id,
-        number: e.number,
-        position: t.position,
-        etaMinutes: t.etaMinutes,
-        waiting: t.waiting
-      })
-      await notifyEntry(e, t, barber)
-    } catch (err) {
-      // A single entry's notify failure must not take down the whole broadcast.
-      console.log('[notify:error] broadcast entry', e.id, err)
-    }
-  }
+  const waiting = entries.filter((e) => e.status === 'WAITING')
+  await Promise.allSettled(
+    waiting.map(async (e) => {
+      try {
+        const t = await ticketSnapshot(e, barber, entries)
+        emitTicketUpdate(e.id, {
+          id: e.id,
+          number: e.number,
+          position: t.position,
+          etaMinutes: t.etaMinutes,
+          waiting: t.waiting
+        })
+        await notifyEntry(e, t, barber)
+      } catch (err) {
+        console.log('[notify:error] broadcast entry', e.id, err)
+      }
+    })
+  )
 }
 
 // Push/email evaluation for a single waiting entry.
@@ -219,6 +225,8 @@ async function notifyEntry(e, t, barber) {
   const key = (kind) => `${kind}:${e.id}`
 
   // Position-change push (only relevant above the milestone ranks).
+  // userId is included when the customer is logged in so their push
+  // subscription (bound to userId) is matched; guests match via data.entryId.
   if (position >= 2) {
     const prev = await lastPosition(key('position'))
     if (prev === null || prev !== position) {
@@ -227,6 +235,7 @@ async function notifyEntry(e, t, barber) {
       await createNotification({
         key: key('position'),
         type: 'position',
+        userId: e.userId,
         title: 'تذكرة الانتظار',
         body: `تحرّك دورك — ${aheadLabel}.`,
         data: { entryId: e.id, position, url: `/barber/${barber.slug}` }
@@ -238,6 +247,7 @@ async function notifyEntry(e, t, barber) {
     await createNotification({
       key: key('milestone_one'),
       type: 'milestone_one',
+      userId: e.userId,
       title: 'دورك قريب جدًا',
       body: 'شخص واحد فقط قبلك — كن جاهزًا، دورك التالي!',
       data: { entryId: e.id, position: 1, url: `/barber/${barber.slug}` }
@@ -248,6 +258,7 @@ async function notifyEntry(e, t, barber) {
     await createNotification({
       key: key('milestone_zero'),
       type: 'milestone_zero',
+      userId: e.userId,
       title: 'أتى دورك!',
       body: 'لا أحد قبلك الآن — كن جاهزًا.',
       data: { entryId: e.id, position: 0, url: `/barber/${barber.slug}` }

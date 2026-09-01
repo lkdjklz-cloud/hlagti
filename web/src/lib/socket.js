@@ -7,6 +7,13 @@ export function getSocket() {
   return socket
 }
 
+export function disconnectSocket() {
+  if (socket) {
+    socket.disconnect()
+    socket = null
+  }
+}
+
 export function joinBarberRoom(barberId) {
   getSocket().emit('barber:join', barberId)
 }
@@ -35,6 +42,12 @@ export function onTicketRemoved(cb) {
   const s = getSocket()
   s.on('ticket:removed', cb)
   return () => s.off('ticket:removed', cb)
+}
+
+export function onLoyaltyCelebrate(cb) {
+  const s = getSocket()
+  s.on('loyalty:celebrate', cb)
+  return () => s.off('loyalty:celebrate', cb)
 }
 
 export function onNotifyNew(cb) {

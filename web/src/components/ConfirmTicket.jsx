@@ -1,5 +1,6 @@
 import { IconCheck, IconBell } from './Icons.jsx'
 import { fmtDuration } from '../lib/format.js'
+import LoyaltyProgress from './LoyaltyProgress.jsx'
 
 export function ConfirmTicket({ ticket, barber, busy, onCancel, push = null }) {
   const position = ticket.position ?? 0
@@ -7,6 +8,7 @@ export function ConfirmTicket({ ticket, barber, busy, onCancel, push = null }) {
     position === 0
       ? 'دورك الآن — كن جاهزًا'
       : fmtDuration(Math.max(9, position * (barber.avgMinutes || 17)))
+  const loy = ticket.loyalty?.enabled ? ticket.loyalty : null
 
   return (
     <article className="confirm" role="region" aria-label="تأكيد الحجز" tabIndex="-1">
@@ -82,6 +84,10 @@ export function ConfirmTicket({ ticket, barber, busy, onCancel, push = null }) {
             )}
           </span>
         </p>
+
+        {loy && (
+          <LoyaltyProgress loy={loy} />
+        )}
 
         <div className="confirm-actions">
           <button className="btn btn-secondary" type="button" disabled={busy} onClick={onCancel}>

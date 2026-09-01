@@ -4,6 +4,7 @@ import prisma from '../db.js'
 import { resolveBarberBySlug } from '../lib/barbers.js'
 import { activeEntries, boardSnapshot } from './board.js'
 import { joinQueue, cancelQueue, getMyTicketRaw, guestTicketFor } from './service.js'
+import { loyaltyStats } from '../lib/loyalty.js'
 import { verifyToken } from '../auth/tokens.js'
 import { authOptional } from '../auth/middleware.js'
 
@@ -27,16 +28,16 @@ router.get('/barbers/:slug/queue', async (req, res, next) => {
     const barber = await resolveBarberBySlug(req.params.slug)
     if (!barber) return res.status(404).json({ error: 'not_found' })
     const entries = await activeEntries(barber.id)
-    return res.json(boardSnapshot(entries, barber))
+    return res.json(await boardSnapshot(entries, barber))
   } catch (e) {
     console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
   }
 })
 
+const nillIfBlank = (v) => (typeof v === 'string' && !v.trim() ? undefined : v)
 const joinSchema = z.object({
-  customerName: z.string().min(1).max(60).optional(),
-  phone: z.string().max(20).optional().nullable(),
+  customerName: z.preprocess(nillIfBlank, z.string().min(1).max(60).optional()),
   deviceId: z.string().max(80).optional().nullable()
 })
 
@@ -51,7 +52,6 @@ router.post('/barbers/:slug/queue/join', authOptional, async (req, res, next) =>
     const userId = req.auth ? req.auth.uid : null
     const entry = await joinQueue(barber, {
       customerName: parsed.data.customerName,
-      phone: parsed.data.phone,
       userId,
       deviceId: parsed.data.deviceId
     })
@@ -76,7 +76,7 @@ router.get('/queue/my', authOptional, async (req, res, next) => {
     const guest = guestFromQuery(req)
     if (req.auth && req.auth.uid) {
       const mine = await prisma.queueEntry.findFirst({
-        where: { userId: req.auth.uid, status: 'WAITING' },
+        where: { userId: req.auth.uid, status: { in: ['WAITING', 'IN_SERVICE'] } },
         orderBy: { joinedAt: 'desc' }
       })
       if (mine) entryId = mine.id
@@ -87,10 +87,11 @@ router.get('/queue/my', authOptional, async (req, res, next) => {
     const data = await getMyTicketRaw(entryId)
     if (!data) return res.json({ ticket: null })
     const entries = await activeEntries(data.barber.id)
-    const snapshot = boardSnapshot(entries, data.barber)
+    const snapshot = await boardSnapshot(entries, data.barber)
     const { position, etaMinutes } = await import('./board.js').then((m) =>
       m.ticketSnapshot(data.entry, data.barber)
     )
+    const loyalty = data.entry.userId ? await loyaltyStats(data.barber.id, data.entry.userId) : null
     return res.json({
       ticket: {
         id: data.entry.id,
@@ -100,6 +101,7 @@ router.get('/queue/my', authOptional, async (req, res, next) => {
         position,
         etaMinutes,
         waiting: snapshot.waiting,
+        loyalty,
         barber: {
           slug: data.barber.slug,
           shopName: data.barber.shopName,
@@ -118,8 +120,7 @@ router.get('/queue/my', authOptional, async (req, res, next) => {
 router.delete('/queue/:id', authOptional, async (req, res, next) => {
   try {
     const guest = guestFromQuery(req)
-    const deviceId = typeof req.query.deviceId === 'string' ? req.query.deviceId : null
-    await cancelQueue(req.params.id, { ticket: guest, user: req.auth || null }, null, deviceId)
+    await cancelQueue(req.params.id, { ticket: guest, user: req.auth || null })
     return res.json({ ok: true })
   } catch (e) {
     console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)

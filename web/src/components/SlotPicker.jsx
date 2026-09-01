@@ -27,6 +27,7 @@ function bookingErrorMessage(e) {
       return 'هذا الموعد محجوز للأسف — اختر وقتًا آخر'
     case 'slot_in_past':
     case 'slot_outside_hours':
+    case 'slot_outside_window':
     case 'slot_off_grid':
     case 'invalid_date':
     case 'invalid_time':
@@ -51,7 +52,6 @@ export default function SlotPicker({ barber, onBooked }) {
   const [closed, setClosed] = useState(false)
   const [selected, setSelected] = useState(null)
   const [name, setName] = useState('')
-  const [phone, setPhone] = useState('')
   const [busy, setBusy] = useState(false)
   const [submitError, setSubmitError] = useState('')
 
@@ -103,7 +103,6 @@ export default function SlotPicker({ barber, onBooked }) {
           date: key,
           time: selected,
           customerName: name.trim() || undefined,
-          phone: phone.trim() || undefined,
           deviceId: getDeviceId()
         }
       })
@@ -111,7 +110,6 @@ export default function SlotPicker({ barber, onBooked }) {
       if (onBooked) onBooked(res.slot, res.token)
       setSelected(null)
       setName('')
-      setPhone('')
     } catch (e) {
       const msg = bookingErrorMessage(e)
       setSubmitError(msg)
@@ -181,18 +179,6 @@ export default function SlotPicker({ barber, onBooked }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             aria-label="اسمك (اختياري)"
-            disabled={busy}
-          />
-          <input
-            className="input"
-            style={{ marginBottom: '10px' }}
-            placeholder="رقم هاتفك (اختياري — للمكافآت)"
-            dir="ltr"
-            maxLength={20}
-            inputMode="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            aria-label="رقم هاتفك (اختياري)"
             disabled={busy}
           />
           {submitError && (

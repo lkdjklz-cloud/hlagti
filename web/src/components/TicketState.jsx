@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { IconClock } from './Icons.jsx'
+import LoyaltyProgress from './LoyaltyProgress.jsx'
 
-export default function TicketState({ barber, board, busy, onJoin }) {
+export default function TicketState({ barber, board, busy, loyalty, onJoin }) {
   const [name, setName] = useState('')
-  const [phone, setPhone] = useState('')
   const eta = board && barber ? board.etaMinutes : 0
+  const loy = loyalty?.enabled ? loyalty : null
 
   return (
     <article className="ticket" aria-label="حالة الانتظار الحالية">
@@ -44,6 +45,10 @@ export default function TicketState({ barber, board, busy, onJoin }) {
         </span>
       </div>
 
+      {loy && (
+        <LoyaltyProgress loy={loy} />
+      )}
+
       <div className="ticket-cta">
         <input
           className="input"
@@ -54,17 +59,7 @@ export default function TicketState({ barber, board, busy, onJoin }) {
           onChange={(e) => setName(e.target.value)}
           aria-label="اسمك (اختياري)"
         />
-        <input
-          className="input"
-          style={{ marginBottom: '10px' }}
-          placeholder="رقم هاتفك (اختياري — للمكافآت)"
-          dir="ltr"
-          maxLength={20}
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          aria-label="رقم هاتفك (اختياري)"
-        />
-        <button className="btn btn-cta" type="button" disabled={busy} onClick={() => onJoin(name, phone)}>
+        <button className="btn btn-cta" type="button" disabled={busy} onClick={() => onJoin(name)}>
           {busy ? (
             <span className="spinner" aria-hidden="true" />
           ) : (

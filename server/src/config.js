@@ -4,10 +4,18 @@ import path from 'node:path'
 
 dotenv.config({ path: path.join(path.dirname(fileURLToPath(import.meta.url)), '../../.env') })
 
+const jwtSecret = process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? '' : 'dev-secret')
+if (process.env.NODE_ENV === 'production' && !jwtSecret) {
+  throw new Error('JWT_SECRET environment variable is required in production')
+}
+if (jwtSecret && jwtSecret.length < 16) {
+  console.warn('[config] WARNING: JWT_SECRET is shorter than 16 characters — use a stronger secret in production')
+}
+
 export const config = {
   port: Number(process.env.PORT || 3001),
   clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
-  jwtSecret: process.env.JWT_SECRET || 'dev-secret',
+  jwtSecret,
   guestTicketTtlHours: Number(process.env.GUEST_TICKET_TTL_HOURS || 12),
   vapid: {
     publicKey: process.env.VAPID_PUBLIC_KEY || '',

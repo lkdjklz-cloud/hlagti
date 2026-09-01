@@ -10,7 +10,8 @@ export function initSocket(httpServer) {
   })
 
   io.on('connection', (socket) => {
-    // Guest ticket holders / logged-in owners may join their own ticket room.
+    const joinedRooms = new Set()
+
     socket.on('ticket:join', (payload) => {
       try {
         if (!payload || typeof payload.token !== 'string') return
@@ -22,9 +23,25 @@ export function initSocket(httpServer) {
       }
     })
 
-    // Any viewer of a barber page joins the public queue room.
     socket.on('barber:join', (barberId) => {
-      if (typeof barberId === 'string') socket.join(`barber:${barberId}`)
+      if (typeof barberId !== 'string') return
+      if (joinedRooms.size >= 20) return // cap per socket
+      const room = `barber:${barberId}`
+      if (!joinedRooms.has(room)) {
+        joinedRooms.add(room)
+        socket.join(room)
+      }
+    })
+
+    socket.on('barber:leave', (barberId) => {
+      if (typeof barberId !== 'string') return
+      const room = `barber:${barberId}`
+      joinedRooms.delete(room)
+      socket.leave(room)
+    })
+
+    socket.on('disconnect', () => {
+      joinedRooms.clear()
     })
   })
 
@@ -49,6 +66,11 @@ export function emitTicketUpdate(entryId, data) {
 export function emitTicketRemoved(entryId) {
   if (!io) return
   getIo().to(`ticket:${entryId}`).emit('ticket:removed')
+}
+
+export function emitTicketEvent(entryId, event, data) {
+  if (!io) return
+  getIo().to(`ticket:${entryId}`).emit(event, data)
 }
 
 export function emitNotify(barberId, notification) {

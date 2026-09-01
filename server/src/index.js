@@ -1,4 +1,6 @@
 import http from 'node:http'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import express from 'express'
 import cors from 'cors'
 import { config } from './config.js'
@@ -11,10 +13,15 @@ import slotsRoutes from './slots/routes.js'
 import notifyRoutes from './notify/routes.js'
 import dashboardRoutes from './dashboard/routes.js'
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const uploadsDir = path.join(__dirname, '..', 'uploads')
+
 const app = express()
 
 app.use(cors({ origin: config.clientUrl, credentials: true }))
 app.use(express.json({ limit: '1mb' }))
+
+app.use('/uploads', express.static(uploadsDir))
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'hlagti-server' })
@@ -42,7 +49,7 @@ app.use((err, _req, res, next) => {
 })
 
 const httpServer = http.createServer(app)
-initSocket(httpServer)
+const io = initSocket(httpServer)
 
 async function start() {
   await prisma.$connect()
@@ -50,6 +57,19 @@ async function start() {
     console.log(`[hlagti-server] listening on http://localhost:${config.port}`)
   })
 }
+
+function shutdown(signal) {
+  console.log(`[hlagti-server] ${signal} received — shutting down`)
+  httpServer.close(() => {
+    io.close()
+    prisma.$disconnect().then(() => process.exit(0)).catch(() => process.exit(1))
+  })
+  // Force exit after 10s if graceful shutdown stalls
+  setTimeout(() => process.exit(1), 10000).unref()
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'))
+process.on('SIGINT', () => shutdown('SIGINT'))
 
 start().catch((err) => {
   console.error('Failed to start server:', err)

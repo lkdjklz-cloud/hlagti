@@ -2,10 +2,34 @@ import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { Router } from 'express'
 import prisma from '../db.js'
-import { signUser } from './tokens.js'
+import { signUser, verifyRefreshToken } from './tokens.js'
 import { authRequired } from './middleware.js'
 
 const router = Router()
+
+// ── Rate limiting for login ─────────────────────────────────
+const loginAttempts = new Map() // key → { count, resetAt }
+const MAX_ATTEMPTS = 5
+const WINDOW_MS = 15 * 60 * 1000 // 15 minutes
+
+function checkRateLimit(key) {
+  const now = Date.now()
+  const entry = loginAttempts.get(key)
+  if (!entry || now > entry.resetAt) {
+    loginAttempts.set(key, { count: 1, resetAt: now + WINDOW_MS })
+    return true
+  }
+  entry.count++
+  return entry.count <= MAX_ATTEMPTS
+}
+
+// Periodic cleanup of expired entries (every 5 min)
+setInterval(() => {
+  const now = Date.now()
+  for (const [key, entry] of loginAttempts) {
+    if (now > entry.resetAt) loginAttempts.delete(key)
+  }
+}, 5 * 60 * 1000).unref()
 
 const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/
 
@@ -55,9 +79,11 @@ async function createBarberFor(user, { shopName, area, city, bio }) {
 
 const usernameField = z.string().regex(USERNAME_RE, 'invalid_username')
 
+// Barbers: require BOTH email and phone
 const barberRegisterSchema = z.object({
   username: usernameField,
   email: z.string().email(),
+  phone: z.string().min(8).max(20),
   password: z.string().min(6).max(100),
   name: z.string().min(2).max(60),
   shopName: z.string().min(2).max(80),
@@ -78,8 +104,10 @@ router.post('/register/barber', async (req, res, next) => {
   }
   const d = parsed.data
   try {
-    const existing = await prisma.user.findUnique({ where: { email: d.email.toLowerCase() } })
-    if (existing) return res.status(409).json({ error: 'email_taken' })
+    const existingEmail = await prisma.user.findUnique({ where: { email: d.email.toLowerCase() } })
+    if (existingEmail) return res.status(409).json({ error: 'email_taken' })
+    const existingPhone = await prisma.user.findFirst({ where: { phone: d.phone } })
+    if (existingPhone) return res.status(409).json({ error: 'phone_taken' })
     const taken = await findUniqueUsername(prisma, d.username)
     if (taken) return res.status(409).json(taken)
 
@@ -88,14 +116,16 @@ router.post('/register/barber', async (req, res, next) => {
       data: {
         username: d.username,
         email: d.email.toLowerCase(),
+        phone: d.phone,
         passwordHash,
         name: d.name,
         role: 'BARBER'
       }
     })
     const barber = await createBarberFor(user, d)
+    const tokens = signUser(user)
     return res.status(201).json({
-      token: signUser(user),
+      ...tokens,
       user: { id: user.id, username: user.username, email: user.email, name: user.name, role: user.role },
       barber: { id: barber.id, slug: barber.slug, shopName: barber.shopName }
     })
@@ -105,12 +135,18 @@ router.post('/register/barber', async (req, res, next) => {
   }
 })
 
+// Customers: require EITHER email or phone (at least one). Empty strings
+// from forms are treated as absent so a blank optional phone never fails.
+const toUndef = (v) => (v === '' || v === null || v === undefined ? undefined : v)
 const customerRegisterSchema = z.object({
   username: usernameField,
-  email: z.string().email(),
+  email: z.preprocess(toUndef, z.string().email().optional()),
+  phone: z.preprocess(toUndef, z.string().min(8).max(20).optional()),
   password: z.string().min(6).max(100),
-  name: z.string().min(2).max(60),
-  phone: z.string().optional()
+  name: z.string().min(2).max(60)
+}).refine((data) => data.email || data.phone, {
+  message: 'يجب توفير البريد الإلكتروني أو رقم الهاتف',
+  path: ['email']
 })
 
 router.post('/register/customer', async (req, res, next) => {
@@ -120,23 +156,30 @@ router.post('/register/customer', async (req, res, next) => {
   }
   const d = parsed.data
   try {
-    const existing = await prisma.user.findUnique({ where: { email: d.email.toLowerCase() } })
-    if (existing) return res.status(409).json({ error: 'email_taken' })
+    if (d.email) {
+      const existingEmail = await prisma.user.findUnique({ where: { email: d.email.toLowerCase() } })
+      if (existingEmail) return res.status(409).json({ error: 'email_taken' })
+    }
+    if (d.phone) {
+      const existingPhone = await prisma.user.findFirst({ where: { phone: d.phone } })
+      if (existingPhone) return res.status(409).json({ error: 'phone_taken' })
+    }
     const taken = await findUniqueUsername(prisma, d.username)
     if (taken) return res.status(409).json(taken)
     const passwordHash = await bcrypt.hash(d.password, 10)
     const user = await prisma.user.create({
       data: {
         username: d.username,
-        email: d.email.toLowerCase(),
+        email: d.email?.toLowerCase() || null,
+        phone: d.phone || null,
         passwordHash,
         name: d.name,
-        phone: d.phone,
         role: 'CUSTOMER'
       }
     })
+    const tokens = signUser(user)
     return res.status(201).json({
-      token: signUser(user),
+      ...tokens,
       user: { id: user.id, username: user.username, email: user.email, name: user.name, role: user.role }
     })
   } catch (e) {
@@ -146,7 +189,7 @@ router.post('/register/customer', async (req, res, next) => {
 })
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().min(1),
   password: z.string().min(1)
 })
 
@@ -156,18 +199,33 @@ router.post('/login', async (req, res, next) => {
     return res.status(400).json({ error: 'validation', issues: parsed.error.flatten() })
   }
   const { email, password } = parsed.data
+  const ip = req.ip || req.connection?.remoteAddress || 'unknown'
+  const rlKey = `login:${ip}:${email.toLowerCase()}`
+  if (!checkRateLimit(rlKey)) {
+    return res.status(429).json({ error: 'too_many_attempts', retryAfter: Math.ceil(WINDOW_MS / 1000) })
+  }
   try {
-    const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } })
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: email.toLowerCase() },
+          { phone: email }
+        ]
+      }
+    })
     if (!user || !user.passwordHash) return res.status(401).json({ error: 'bad_credentials' })
     const ok = await bcrypt.compare(password, user.passwordHash)
     if (!ok) return res.status(401).json({ error: 'bad_credentials' })
+
+    loginAttempts.delete(rlKey)
 
     const barber = user.role === 'BARBER'
       ? await prisma.barber.findUnique({ where: { userId: user.id } })
       : null
 
+    const tokens = signUser(user)
     return res.json({
-      token: signUser(user),
+      ...tokens,
       user: {
         id: user.id,
         username: user.username,
@@ -215,6 +273,26 @@ const upgradeSchema = z.object({
   bio: z.string().max(500).optional()
 })
 
+const refreshSchema = z.object({
+  refreshToken: z.string()
+})
+
+router.post('/refresh', async (req, res, next) => {
+  const parsed = refreshSchema.safeParse(req.body || {})
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'validation', issues: parsed.error.flatten() })
+  }
+  try {
+    const decoded = verifyRefreshToken(parsed.data.refreshToken)
+    const user = await prisma.user.findUnique({ where: { id: decoded.uid } })
+    if (!user) return res.status(401).json({ error: 'user_not_found' })
+    const tokens = signUser(user)
+    return res.json(tokens)
+  } catch (e) {
+    return res.status(401).json({ error: 'invalid_refresh_token' })
+  }
+})
+
 router.post('/upgrade/barber', authRequired, async (req, res, next) => {
   const parsed = upgradeSchema.safeParse(req.body || {})
   if (!parsed.success) {
@@ -231,8 +309,9 @@ router.post('/upgrade/barber', authRequired, async (req, res, next) => {
       where: { id: user.id },
       data: { role: 'BARBER' }
     })
+    const tokens = signUser(updated)
     return res.status(201).json({
-      token: signUser(updated),
+      ...tokens,
       user: {
         id: updated.id,
         username: updated.username,

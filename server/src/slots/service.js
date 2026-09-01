@@ -110,7 +110,7 @@ export async function slotAvailability(barber, dateStr) {
 // Only one active booking per barber (queue ticket OR booked slot).
 export async function bookSlot(
   barber,
-  { dateStr, time, customerName, customerPhone = null, userId = null, deviceId = null }
+  { dateStr, time, customerName, userId = null, deviceId = null }
 ) {
   await assertNoActiveBooking(barber.id, { userId, deviceId })
 
@@ -118,6 +118,23 @@ export async function bookSlot(
   if (Number.isNaN(date.getTime())) {
     const err = new Error('invalid_date')
     err.status = 400
+    throw err
+  }
+  // Reject bookings in the past (any day before today) — otherwise a customer
+  // could create an appointment for a moment that already happened, and the
+  // barber would never see it on their dashboard (ghost booking).
+  const today = new Date()
+  if (dateKeyFor(date) < dateKeyFor(today)) {
+    const err = new Error('slot_in_past')
+    err.status = 409
+    throw err
+  }
+  // Reject bookings too far ahead — the barber dashboard only shows the next
+  // 30 days, so anything beyond that would be invisible to them.
+  const horizon = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 30)
+  if (date.getTime() > horizon.getTime()) {
+    const err = new Error('slot_outside_window')
+    err.status = 409
     throw err
   }
   const startMin = toMinutes(time)
@@ -156,7 +173,12 @@ export async function bookSlot(
   try {
     return await prisma.$transaction(async (tx) => {
       const clash = await tx.slot.findFirst({
-        where: { barberId: barber.id, startsAt: start, status: { not: 'CANCELLED' } }
+        where: {
+          barberId: barber.id,
+          status: { not: 'CANCELLED' },
+          startsAt: { lt: end },
+          endsAt: { gt: start }
+        }
       })
       if (clash) {
         const err = new Error('slot_taken')
@@ -169,7 +191,6 @@ export async function bookSlot(
           startsAt: start,
           endsAt: end,
           customerName: (customerName || '').trim() || 'زبون',
-          customerPhone: customerPhone || null,
           guestId: deviceId || null,
           userId,
           status: 'BOOKED'
