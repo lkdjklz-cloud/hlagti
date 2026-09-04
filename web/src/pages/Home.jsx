@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api, getToken, setTokens, clearToken } from '../lib/api.js'
 import { useToast } from '../lib/toast.jsx'
@@ -6,13 +6,17 @@ import { disconnectSocket } from '../lib/socket.js'
 import { IconPin, IconScissors } from '../components/Icons.jsx'
 import Lightbox from '../components/Lightbox.jsx'
 import useDialog from '../components/useDialog.js'
+import Stars from '../components/Stars.jsx'
 import { getPosition, formatKm } from '../lib/geo.js'
 
 export default function Home() {
   const toast = useToast()
   const navigate = useNavigate()
   const [barbers, setBarbers] = useState([])
+  const [total, setTotal] = useState(0)
+  const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
+  const [moreBusy, setMoreBusy] = useState(false)
   const [error, setError] = useState(false)
   const [me, setMe] = useState(null)
   const [upgradeOpen, setUpgradeOpen] = useState(false)
@@ -23,29 +27,63 @@ export default function Home() {
   const [zoom, setZoom] = useState(null)
   const listCache = useRef({})
   const upgradeRef = useDialog({ open: upgradeOpen, onClose: () => setUpgradeOpen(false) })
+  const PAGE_SIZE = 20
+
+  const fetchPage = useCallback(
+    async ({ q, offset, append = false }) => {
+      const params = new URLSearchParams()
+      if (near) {
+        params.set('lat', near.lat)
+        params.set('lng', near.lng)
+      }
+      if (q) params.set('q', q)
+      params.set('limit', String(PAGE_SIZE))
+      params.set('offset', String(offset))
+      const key = `${q}::${near ? `${near.lat},${near.lng}` : ''}`
+      const cached = append ? null : listCache.current[key]
+      if (cached) {
+        setBarbers(cached.items)
+        setTotal(cached.total)
+        setError(false)
+        setLoading(false)
+        return
+      }
+      const data = await api(`/barbers?${params.toString()}`)
+      if (append) {
+        setBarbers((prev) => [...prev, ...data.items])
+      } else {
+        listCache.current[key] = data
+        setBarbers(data.items)
+      }
+      setTotal(data.total)
+      setError(false)
+    },
+    [near]
+  )
 
   useEffect(() => {
     let alive = true
-    const q = near ? `?lat=${near.lat}&lng=${near.lng}` : ''
-    const cached = listCache.current[q]
-    if (cached) {
-      setBarbers(cached)
-      setError(false)
-      setLoading(false)
-    }
-    api(`/barbers${q}`)
-      .then((list) => {
-        if (!alive) return
-        listCache.current[q] = list
-        setBarbers(list)
-        setError(false)
-      })
+    setLoading(true)
+    setMoreBusy(false)
+    fetchPage({ q: query, offset: 0 })
       .catch(() => alive && setError(true))
       .finally(() => alive && setLoading(false))
     return () => {
       alive = false
     }
-  }, [near])
+  }, [fetchPage, query])
+
+  async function loadMore() {
+    if (moreBusy) return
+    setMoreBusy(true)
+    try {
+      await fetchPage({ q: query, offset: barbers.length, append: true })
+    } catch {
+      /* keep current list */
+    } finally {
+      setMoreBusy(false)
+    }
+  }
 
   useEffect(() => {
     if (!getToken()) return
@@ -144,6 +182,17 @@ export default function Home() {
             تذكرة الانتظار المباشرة لصالونك المحلي — لا مزيد من الانتظار الطويل.
           </p>
 
+          <div className="search-row" style={{ marginBottom: 14 }}>
+            <input
+              className="input"
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="ابحث عن صالون بالاسم أو المنطقة أو المدينة…"
+              aria-label="ابحث عن صالون"
+            />
+          </div>
+
           <div className="row" style={{ gap: 10, marginBottom: 18 }}>
             <button className="btn btn-ghost" type="button" onClick={locate} disabled={locBusy} style={{ fontSize: 13.5 }}>
               {locBusy ? <span className="spinner" aria-hidden="true" /> : <IconPin width="14" height="14" />}
@@ -186,6 +235,16 @@ export default function Home() {
                       <div style={{ fontWeight: 800, color: 'var(--navy)', fontSize: 16 }}>
                         {b.shopName}
                       </div>
+                      {b.rating !== null && b.rating !== undefined && (
+                        <div className="row" style={{ gap: 6, marginTop: 3 }}>
+                          <Stars value={b.rating} size={12.5} />
+                          {b.ratingCount > 0 && (
+                            <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+                              ({b.ratingCount})
+                            </span>
+                          )}
+                        </div>
+                      )}
                       {(b.area || b.city) && (
                         <div className="shop-area">
                           <IconPin width="13" height="13" />
@@ -208,9 +267,19 @@ export default function Home() {
               </div>
             ))}
             {!loading && !error && barbers.length === 0 && (
-              <p className="empty-state">لا توجد صالونات بعد.</p>
+              <p className="empty-state">
+                {query ? 'لا توجد نتائج تطابق بحثك.' : 'لا توجد صالونات بعد.'}
+              </p>
             )}
           </div>
+
+          {!loading && !error && barbers.length < total && (
+            <div style={{ textAlign: 'center', marginTop: 14 }}>
+              <button className="btn btn-secondary" type="button" onClick={loadMore} disabled={moreBusy}>
+                {moreBusy ? <span className="spinner" aria-hidden="true" /> : 'عرض المزيد'}
+              </button>
+            </div>
+          )}
         </main>
       </div>
 

@@ -2,7 +2,8 @@ import { Router } from 'express'
 import { resolveBarberBySlug } from '../lib/barbers.js'
 import { findActiveBooking } from '../lib/booking.js'
 import { loyaltyStats } from '../lib/loyalty.js'
-import { authOptional } from '../auth/middleware.js'
+import { authOptional, authRequired } from '../auth/middleware.js'
+import { upsertReview, listReviews, publicReview } from '../reviews/service.js'
 import prisma from '../db.js'
 
 const router = Router()
@@ -18,7 +19,10 @@ function publicBarber(barber) {
     lat: barber.lat,
     lng: barber.lng,
     photoUrl: barber.photoUrl,
-    rating: null, // phase 2 (reviews)
+    rating: barber.avgRating !== null && barber.avgRating !== undefined
+      ? Number(barber.avgRating.toFixed(1))
+      : null,
+    ratingCount: barber.ratingCount,
     open: barber.open,
     workingHours: safeJson(barber.workingHours),
     slotsEnabled: barber.slotsEnabled,
@@ -58,11 +62,34 @@ router.get('/barbers', async (req, res, next) => {
     const lat = parseFloat(req.query.lat)
     const lng = parseFloat(req.query.lng)
     const hasNear = Number.isFinite(lat) && Number.isFinite(lng)
-    const barbers = await prisma.barber.findMany({
-      include: { services: { orderBy: { sortOrder: 'asc' } } },
-      orderBy: { createdAt: 'asc' }
-    })
-    const list = barbers.map((b) => {
+    const q = typeof req.query.q === 'string' ? req.query.q.trim() : ''
+    const limit = Math.max(1, Math.min(50, parseInt(req.query.limit, 10) || 20))
+    const offset = Math.max(0, parseInt(req.query.offset, 10) || 0)
+
+    // Optional text search across name/area/city/bio.
+    const where = q
+      ? {
+          OR: [
+            { shopName: { contains: q } },
+            { area: { contains: q } },
+            { city: { contains: q } },
+            { bio: { contains: q } }
+          ]
+        }
+      : {}
+
+    const [barbers, total] = await Promise.all([
+      prisma.barber.findMany({
+        where,
+        include: { services: { orderBy: { sortOrder: 'asc' } } },
+        orderBy: { createdAt: 'asc' },
+        skip: offset,
+        take: limit
+      }),
+      prisma.barber.count({ where })
+    ])
+
+    const items = barbers.map((b) => {
       const pub = publicBarber(b)
       if (hasNear && Number.isFinite(b.lat) && Number.isFinite(b.lng)) {
         pub.distanceKm = Number(haversineKm(lat, lng, b.lat, b.lng).toFixed(1))
@@ -72,14 +99,14 @@ router.get('/barbers', async (req, res, next) => {
       return pub
     })
     if (hasNear) {
-      list.sort((a, b) => {
+      items.sort((a, b) => {
         if (a.distanceKm === null && b.distanceKm === null) return 0
         if (a.distanceKm === null) return 1
         if (b.distanceKm === null) return -1
         return a.distanceKm - b.distanceKm
       })
     }
-    return res.json(list)
+    return res.json({ items, total })
   } catch (e) {
     console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)
@@ -91,6 +118,37 @@ router.get('/barbers/:slug', async (req, res, next) => {
     const barber = await resolveBarberBySlug(req.params.slug)
     if (!barber) return res.status(404).json({ error: 'not_found' })
     return res.json(publicBarber(barber))
+  } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
+    return next(e)
+  }
+})
+
+// Public list of reviews for a barber.
+router.get('/barbers/:slug/reviews', async (req, res, next) => {
+  try {
+    const barber = await resolveBarberBySlug(req.params.slug)
+    if (!barber) return res.status(404).json({ error: 'not_found' })
+    const reviews = (await listReviews(barber.id)).map(publicReview)
+    return res.json({ reviews })
+  } catch (e) {
+    console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
+    return next(e)
+  }
+})
+
+// Create or update a review (auth required; one review per user per barber).
+router.post('/barbers/:slug/reviews', authRequired, async (req, res, next) => {
+  try {
+    const barber = await resolveBarberBySlug(req.params.slug)
+    if (!barber) return res.status(404).json({ error: 'not_found' })
+    const rating = req.body && req.body.rating
+    const comment = req.body && req.body.comment
+    const { review, barber: updated } = await upsertReview(barber.id, req.auth.uid, {
+      rating,
+      comment
+    })
+    return res.json({ review: publicReview(review), barber: publicBarber(updated) })
   } catch (e) {
     console.log(`[http:error] ${req.method} ${req.originalUrl}`, e)
     return next(e)

@@ -329,12 +329,41 @@ describe('full e2e: public barbers', () => {
   it('GET /barbers lists everything without secrets', async () => {
     const r = await req('/barbers')
     assert.equal(r.status, 200)
-    const mine = r.json.find((b) => b.slug === B.barber.slug)
+    const { items, total } = r.json
+    assert.ok(Array.isArray(items), 'response has items array')
+    assert.ok(typeof total === 'number', 'response has total')
+    assert.equal(items.length, total)
+    const mine = items.find((b) => b.slug === B.barber.slug)
     assert.ok(mine)
     assert.equal(mine.open, true)
     assert.equal(mine.services.length, 3)
     assert.equal(mine.slotsEnabled, true)
     assert.equal(mine.slotLengthMinutes, 30)
+  })
+
+  it('GET /barbers?q= filters by shop name', async () => {
+    const r = await req('/barbers', { query: { q: B.barber.shopName.slice(0, 4) } })
+    assert.equal(r.status, 200)
+    const slugs = r.json.items.map((b) => b.slug)
+    assert.ok(slugs.includes(B.barber.slug), 'matching shop found by name')
+    assert.equal(r.json.total, r.json.items.length)
+  })
+
+  it('GET /barbers?q= returns empty items for a miss', async () => {
+    const r = await req('/barbers', { query: { q: 'zzz-no-such-shop-xyz' } })
+    assert.equal(r.status, 200)
+    assert.equal(r.json.items.length, 0)
+    assert.equal(r.json.total, 0)
+  })
+
+  it('GET /barbers?limit&offset paginates without paginating the total', async () => {
+    const all = await req('/barbers')
+    const page = await req('/barbers', { query: { limit: '1', offset: '0' } })
+    assert.equal(page.status, 200)
+    assert.equal(page.json.items.length, 1)
+    assert.equal(page.json.total, all.json.total)
+    const page2 = await req('/barbers', { query: { limit: '1', offset: '1' } })
+    assert.notEqual(page.json.items[0].slug, page2.json.items[0].slug, 'second page differs')
   })
 
   it('GET /barbers/:slug returns ordered services', async () => {
@@ -895,8 +924,8 @@ describe('full e2e: shop geolocation', () => {
     assert.equal(setB.status, 200)
 
     const list = await req('/barbers')
-    const mine = list.json.find((b) => b.slug === B.barber.slug)
-    const other = list.json.find((b) => b.slug === B2.barber.slug)
+    const mine = list.json.items.find((b) => b.slug === B.barber.slug)
+    const other = list.json.items.find((b) => b.slug === B2.barber.slug)
     assert.equal(mine.lat, 36.7538)
     assert.equal(mine.lng, 3.0588)
     assert.equal(other.lat, 41.6026)
@@ -910,13 +939,13 @@ describe('full e2e: shop geolocation', () => {
   it('/barbers?lat&lng returns distanceKm and sorts nearest-first', async () => {
     const r = await req('/barbers', { query: { lat: '36.77', lng: '3.05' } })
     assert.equal(r.status, 200)
-    for (const b of r.json) assert.ok(Object.hasOwn(b, 'distanceKm'), 'every shop carries distanceKm')
-    const mine = r.json.find((b) => b.slug === B.barber.slug)
-    const other = r.json.find((b) => b.slug === B2.barber.slug)
+    for (const b of r.json.items) assert.ok(Object.hasOwn(b, 'distanceKm'), 'every shop carries distanceKm')
+    const mine = r.json.items.find((b) => b.slug === B.barber.slug)
+    const other = r.json.items.find((b) => b.slug === B2.barber.slug)
     assert.ok(mine.distanceKm > 0, 'distance computed for a shop with coords')
     assert.ok(mine.distanceKm < other.distanceKm, 'nearer shop has smaller distance')
-    const idx = r.json.findIndex((b) => b.slug === B.barber.slug)
-    const idx2 = r.json.findIndex((b) => b.slug === B2.barber.slug)
+    const idx = r.json.items.findIndex((b) => b.slug === B.barber.slug)
+    const idx2 = r.json.items.findIndex((b) => b.slug === B2.barber.slug)
     assert.ok(idx < idx2, 'nearer shop sorts first')
   })
 
@@ -933,10 +962,10 @@ describe('full e2e: shop geolocation', () => {
     const far = await req('/barbers', {
       query: { lat: '36.77', lng: '3.05' }
     })
-    const other = far.json.find((b) => b.slug === B2.barber.slug)
+    const other = far.json.items.find((b) => b.slug === B2.barber.slug)
     assert.equal(other.distanceKm, null)
     const undone = await req('/barbers')
-    const otherPlain = undone.json.find((b) => b.slug === B2.barber.slug)
+    const otherPlain = undone.json.items.find((b) => b.slug === B2.barber.slug)
     assert.equal(otherPlain.lat, null)
   })
 })
@@ -965,7 +994,7 @@ describe('full e2e: barber profile photo', () => {
     assert.match(photoUrl, /^\/uploads\/.+\.png$/)
 
     const pub = await req('/barbers')
-    const mine = pub.json.find((b) => b.slug === B.barber.slug)
+    const mine = pub.json.items.find((b) => b.slug === B.barber.slug)
     assert.equal(mine.photoUrl, photoUrl)
 
     const served = await fetch(`${ORIGIN}${photoUrl}`)

@@ -10,7 +10,7 @@
     "migrate": "prisma migrate dev",
     "dbpush": "prisma db push",
     "generate": "prisma generate",
-    "test": "node --test tests/queue.test.js tests/notify.test.js",
+    "test": "node --test tests/queue.test.js tests/notify.test.js tests/reviews.test.js tests/isolation.test.js",
     "test:e2e": "node --test tests/full-e2e.mjs"
   },
   "dependencies": {

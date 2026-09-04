@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { Router } from 'express'
 import prisma from '../db.js'
+import { config } from '../config.js'
 import { signUser, verifyRefreshToken } from './tokens.js'
 import { authRequired } from './middleware.js'
 
@@ -11,6 +12,8 @@ const router = Router()
 const loginAttempts = new Map() // key → { count, resetAt }
 const MAX_ATTEMPTS = 5
 const WINDOW_MS = 15 * 60 * 1000 // 15 minutes
+const REGISTER_LIMIT = config.rateLimits.registerPerIp
+const REFRESH_LIMIT = config.rateLimits.refreshPerIp
 
 function checkRateLimit(key) {
   const now = Date.now()
@@ -24,8 +27,6 @@ function checkRateLimit(key) {
 }
 
 // IP-scoped rate limiting for write/auth-heavy endpoints.
-const REGISTER_LIMIT = 10 // per IP per window
-const REFRESH_LIMIT = 120
 function checkIpRateLimit(key, max) {
   const now = Date.now()
   const entry = loginAttempts.get(key)

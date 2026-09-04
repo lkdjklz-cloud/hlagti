@@ -17,6 +17,10 @@ export const config = {
   clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
   jwtSecret,
   guestTicketTtlHours: Number(process.env.GUEST_TICKET_TTL_HOURS || 12),
+  rateLimits: {
+    registerPerIp: Number(process.env.REGISTER_LIMIT || 10),
+    refreshPerIp: Number(process.env.REFRESH_LIMIT || 120)
+  },
   vapid: {
     publicKey: process.env.VAPID_PUBLIC_KEY || '',
     privateKey: process.env.VAPID_PRIVATE_KEY || '',

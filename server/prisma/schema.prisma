@@ -44,6 +44,7 @@ model User {
   barber     Barber?
   queueEntry QueueEntry[]
   slots      Slot[]
+  reviews    Review[]
   notifications Notification[]
   pushSubscriptions PushSubscription[]
 }
@@ -68,11 +69,14 @@ model Barber {
   lat               Float?
   lng               Float?
   photoUrl          String?
+  avgRating         Float?
+  ratingCount       Int      @default(0)
   createdAt         DateTime @default(now())
 
   services     Service[]
   queueEntries QueueEntry[]
   slots        Slot[]
+  reviews      Review[]
 }
 
 model Service {
@@ -159,4 +163,18 @@ model PushSubscription {
 
   @@index([userId])
   @@index([entryId])
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  barberId  String
+  barber    Barber   @relation(fields: [barberId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating    Int // 1–5
+  comment   String?
+  createdAt DateTime @default(now())
+
+  @@unique([barberId, userId])
+  @@index([barberId])
 }

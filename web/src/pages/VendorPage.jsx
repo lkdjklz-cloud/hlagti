@@ -30,6 +30,7 @@ import TicketState from '../components/TicketState.jsx'
 import { ConfirmTicket } from '../components/ConfirmTicket.jsx'
 import SlotPicker from '../components/SlotPicker.jsx'
 import ServicesMenu from '../components/ServicesMenu.jsx'
+import Reviews from '../components/Reviews.jsx'
 import ConfirmDialog from '../components/ConfirmDialog.jsx'
 
 function estStartMinutes(etaMinutes) {
@@ -456,6 +457,8 @@ export default function VendorPage() {
           {barber.slotsEnabled && !appt && <SlotPicker barber={barber} onBooked={onBooked} />}
 
           <ServicesMenu services={barber.services} />
+
+          <Reviews barber={barber} onRated={(b) => setBarber((prev) => (prev ? { ...prev, ...b } : prev))} />
         </main>
 
         <footer className="pagefoot">
