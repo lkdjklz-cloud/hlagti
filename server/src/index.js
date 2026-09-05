@@ -1,4 +1,5 @@
 import http from 'node:http'
+import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import express from 'express'
@@ -38,6 +39,18 @@ app.use('/api/dashboard', dashboardRoutes)
 app.get('/api/config/public', (_req, res) => {
   res.json({ vapidPublicKey: config.vapid.publicKey })
 })
+
+// Static web build + SPA fallback (single deployable unit).
+// Only active when the production build exists, so local dev via Vite stays untouched.
+const distDir = path.join(__dirname, '..', '..', 'web', 'dist')
+const distIndex = path.join(distDir, 'index.html')
+if (fs.existsSync(distIndex)) {
+  app.use(express.static(distDir))
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/') || req.path.startsWith('/uploads/')) return next()
+    return res.sendFile(distIndex)
+  })
+}
 
 // Central error handler (async errors land here via next(e))
 app.use((err, _req, res, next) => {
