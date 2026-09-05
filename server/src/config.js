@@ -2,7 +2,7 @@ import dotenv from 'dotenv'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
-dotenv.config({ path: path.join(path.dirname(fileURLToPath(import.meta.url)), '../../.env') })
+dotenv.config({ path: path.join(path.dirname(fileURLToPath(import.meta.url)), '../.env') })
 
 const jwtSecret = process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? '' : 'dev-secret')
 if (process.env.NODE_ENV === 'production' && !jwtSecret) {
