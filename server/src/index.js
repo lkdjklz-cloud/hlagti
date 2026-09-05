@@ -1,6 +1,7 @@
 import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
+import { execSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import express from 'express'
 import cors from 'cors'
@@ -64,7 +65,18 @@ app.use((err, _req, res, next) => {
 const httpServer = http.createServer(app)
 const io = initSocket(httpServer)
 
+// On production boot, apply pending Prisma migrations before serving.
+// Idempotent: on a fresh DB it creates the schema; otherwise only applies pending ones.
+// Skipped outside production so local dev (Vite + migrate dev) is unaffected.
+function runMigrationsIfNeeded() {
+  if (process.env.NODE_ENV !== 'production') return
+  const serverRoot = path.join(__dirname, '..')
+  const cli = path.join(serverRoot, 'node_modules', '.bin', process.platform === 'win32' ? 'prisma.cmd' : 'prisma')
+  execSync(`"${cli}" migrate deploy`, { cwd: serverRoot, stdio: 'inherit' })
+}
+
 async function start() {
+  runMigrationsIfNeeded()
   await prisma.$connect()
   httpServer.listen(config.port, () => {
     console.log(`[hlagti-server] listening on http://localhost:${config.port}`)
